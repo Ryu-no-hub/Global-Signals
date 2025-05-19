@@ -1,4 +1,4 @@
-# Space Engineers Plugin Template
+# Global Signals (My first plugin)
 
 [Client only version of the template](https://github.com/sepluginloader/ClientPluginTemplate)
 

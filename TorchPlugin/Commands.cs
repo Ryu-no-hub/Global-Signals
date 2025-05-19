@@ -19,7 +19,7 @@ namespace TorchPlugin
         // TODO: Implement subcommands as needed
         private void RespondWithHelp()
         {
-            Respond("PluginTemplate commands:");
+            Respond("GlobalSignals commands:");
             Respond("  !cmd help");
             Respond("  !cmd info");
             Respond("    Prints the current configuration settings.");
@@ -75,7 +75,7 @@ namespace TorchPlugin
 
         // ReSharper disable once UnusedMember.Global
 
-        [Command("cmd help", "PluginTemplate: Help")]
+        [Command("cmd help", "GlobalSignals: Help")]
         [Permission(MyPromoteLevel.None)]
         public void Help()
         {
@@ -83,7 +83,7 @@ namespace TorchPlugin
         }
 
         // ReSharper disable once UnusedMember.Global
-        [Command("cmd info", "PluginTemplate: Prints the current settings")]
+        [Command("cmd info", "GlobalSignals: Prints the current settings")]
         [Permission(MyPromoteLevel.None)]
         public void Info()
         {
@@ -91,7 +91,7 @@ namespace TorchPlugin
         }
 
         // ReSharper disable once UnusedMember.Global
-        [Command("cmd enable", "PluginTemplate: Enables the plugin")]
+        [Command("cmd enable", "GlobalSignals: Enables the plugin")]
         [Permission(MyPromoteLevel.Admin)]
         public void Enable()
         {
@@ -100,7 +100,7 @@ namespace TorchPlugin
         }
 
         // ReSharper disable once UnusedMember.Global
-        [Command("cmd disable", "PluginTemplate: Disables the plugin")]
+        [Command("cmd disable", "GlobalSignals: Disables the plugin")]
         [Permission(MyPromoteLevel.Admin)]
         public void Disable()
         {
@@ -110,7 +110,7 @@ namespace TorchPlugin
 
         // TODO: Subcommand
         // ReSharper disable once UnusedMember.Global
-        [Command("cmd subcmd", "PluginTemplate: TODO: Subcommand")]
+        [Command("cmd subcmd", "GlobalSignals: TODO: Subcommand")]
         [Permission(MyPromoteLevel.Admin)]
         public void SubCmd(string name, string value)
         {
