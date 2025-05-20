@@ -38,8 +38,8 @@ namespace TorchPlugin
         public IPluginLogger Log => Logger;
         private static readonly IPluginLogger Logger = new PluginLogger(PluginName);
 
-        public GlobalSignalsConfig Config => config?.Data;
-        private PersistentConfig<GlobalSignalsConfig> config;
+        public IPluginConfig Config => config?.Data;
+        private PersistentConfig<PluginConfig> config;
         private static readonly string ConfigFileName = $"{PluginName}.cfg";
 
         public UserControl GetControl() => control ?? (control = new ConfigView());
@@ -71,7 +71,7 @@ namespace TorchPlugin
             Log.Info("Init");
 
             var configPath = Path.Combine(StoragePath, ConfigFileName);
-            config = PersistentConfig<GlobalSignalsConfig>.Load(Log, configPath);
+            config = PersistentConfig<PluginConfig>.Load(Log, configPath);
 
             var gameVersionNumber = MyPerGameSettings.BasicGameInfo.GameVersion ?? 0;
             var gameVersion = new StringBuilder(MyBuildNumbers.ConvertBuildNumberFromIntToString(gameVersionNumber)).ToString();

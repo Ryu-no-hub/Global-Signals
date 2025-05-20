@@ -26,7 +26,7 @@ namespace TorchPlugin
         //private static IPluginConfig Config => Common.Config;
         public static readonly Logger Log = LogManager.GetCurrentClassLogger();
 
-        public GlobalSignalsPlugin Plugin => (GlobalSignalsPlugin)Context.Plugin;
+        public Plugin Plugin => (Plugin)Context.Plugin;
 
         private void Respond(string message)
         {
@@ -50,8 +50,8 @@ namespace TorchPlugin
 
         private void RespondWithInfo()
         {
-            var config = GlobalSignalsPlugin.Instance.Config;
-            Respond($"{GlobalSignalsPlugin.PluginName} plugin is enabled: {Format(config.Enabled)}");
+            var config = Plugin.Instance.Config;
+            Respond($"{Plugin.PluginName} plugin is enabled: {Format(config.Enabled)}");
             // TODO: Respond with your plugin settings
             // For example:
             //Respond($"custom_setting: {Format(config.CustomSetting)}");

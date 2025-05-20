@@ -19,7 +19,8 @@ namespace TorchPlugin
         private bool _useConnectedGrids = false;
 
         public string GpsDescriptionString { get => _gpsDescriptionString; set => SetValue(ref _gpsDescriptionString, value); }
-        public bool UseConnectedGrids { get => _useConnectedGrids; set => SetValue(ref _useConnectedGrids, value); }
+
+        //public bool UseConnectedGrids { get => _useConnectedGrids; set => SetValue(ref _useConnectedGrids, value); }
 
         [Display(Order = 1, GroupName = "General", Name = "Enable plugin", Description = "Enable the plugin")]
         public bool Enabled
@@ -36,5 +37,11 @@ namespace TorchPlugin
         }
 
         // TODO: Encapsulate them as properties and define their Display properties
+        [Display(Order = 3, GroupName = "General", Name = "Use Connected Grids", Description = "Don't know what that means")]
+        public bool UseConnectedGrids
+        {
+            get => _useConnectedGrids;
+            set => SetValue(ref _useConnectedGrids, value);
+        }
     }
 }

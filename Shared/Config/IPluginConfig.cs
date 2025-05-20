@@ -11,5 +11,8 @@ namespace Shared.Config
         bool DetectCodeChanges { get; set; }
 
         // TODO: Add config properties here, then extend the implementing classes accordingly
+        string GpsDescriptionString { get; set; }
+
+        bool UseConnectedGrids { get; set; }
     }
 }
