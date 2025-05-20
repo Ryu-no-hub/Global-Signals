@@ -22,6 +22,8 @@ if "%PROJECT:~-1%"=="\" set PROJECT=%PROJECT:~0,-1%
 
 REM Get the plugin directory
 set COMMON_PLUGIN_DIR=%TORCH%\Plugins
+echo TORCH = "%TORCH%"
+
 
 REM Create this directory if it does not exist
 if not exist "%COMMON_PLUGIN_DIR%" (

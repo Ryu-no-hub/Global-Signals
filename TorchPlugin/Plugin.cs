@@ -1,12 +1,17 @@
 ﻿#define USE_HARMONY
 
 using System;
+using System.Collections.Generic;
 using System.IO;
 using System.Text;
 using System.Threading;
 using System.Windows.Controls;
 using HarmonyLib;
 using Sandbox.Game;
+using Sandbox.Game.Entities;
+using Sandbox.Game.Screens.Helpers;
+using Sandbox.Game.World;
+using Sandbox.ModAPI;
 using Shared.Config;
 using Shared.Logging;
 using Shared.Patches;
@@ -17,6 +22,7 @@ using Torch.API.Managers;
 using Torch.API.Plugins;
 using Torch.API.Session;
 using Torch.Session;
+using VRage.Game.ModAPI;
 using VRage.Utils;
 
 namespace TorchPlugin
@@ -32,11 +38,10 @@ namespace TorchPlugin
         public IPluginLogger Log => Logger;
         private static readonly IPluginLogger Logger = new PluginLogger(PluginName);
 
-        public IPluginConfig Config => config?.Data;
-        private PersistentConfig<PluginConfig> config;
+        public GlobalSignalsConfig Config => config?.Data;
+        private PersistentConfig<GlobalSignalsConfig> config;
         private static readonly string ConfigFileName = $"{PluginName}.cfg";
 
-        // ReSharper disable once UnusedMember.Global
         public UserControl GetControl() => control ?? (control = new ConfigView());
         private ConfigView control;
 
@@ -44,6 +49,9 @@ namespace TorchPlugin
 
         private bool initialized;
         private bool failed;
+        public string GpsIdentifierName { get { return Config.GpsDescriptionString; } }
+        public bool UseConnectedGrids { get { return Config.UseConnectedGrids; } }
+        public List<MyCubeGrid> gridsDetectable = new List<MyCubeGrid>();
 
         // ReSharper disable once UnusedMember.Local
         private readonly Commands commands = new Commands();
@@ -63,7 +71,7 @@ namespace TorchPlugin
             Log.Info("Init");
 
             var configPath = Path.Combine(StoragePath, ConfigFileName);
-            config = PersistentConfig<PluginConfig>.Load(Log, configPath);
+            config = PersistentConfig<GlobalSignalsConfig>.Load(Log, configPath);
 
             var gameVersionNumber = MyPerGameSettings.BasicGameInfo.GameVersion ?? 0;
             var gameVersion = new StringBuilder(MyBuildNumbers.ConvertBuildNumberFromIntToString(gameVersionNumber)).ToString();
@@ -139,9 +147,44 @@ namespace TorchPlugin
             }
         }
 
+        public void RemoveGpsFromAllPlayers()
+        {
+
+            Log.Info("Removing GPS from all Players.");
+
+            foreach (var identity in MySession.Static.Players.GetAllIdentities())
+                RemoveGpsFromPlayer(identity.IdentityId);
+        }
+
+        public void RemoveGpsFromPlayer(long idendity)
+        {
+
+            List<IMyGps> gpsList = MyAPIGateway.Session?.GPS.GetGpsList(idendity);
+
+            if (gpsList == null)
+                return;
+
+            foreach (IMyGps gps in gpsList)
+            {
+
+                if (!(gps is MyGps myGps))
+                    continue;
+
+                string desc = myGps.Description;
+
+                if (desc == null)
+                    continue;
+
+                if (!desc.Contains("by " + GpsIdentifierName) || !desc.Contains("Top Grid:"))
+                    continue;
+
+                MyAPIGateway.Session?.GPS.RemoveGps(idendity, gps);
+            }
+        }
         private void CustomUpdate()
         {
             // TODO: Put your update processing here. It is called on every simulation frame!
+
             PatchHelpers.PatchUpdates();
         }
     }

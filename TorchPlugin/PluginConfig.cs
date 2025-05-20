@@ -15,6 +15,11 @@ namespace TorchPlugin
         //       at first, so admins can enable them first on their test deployments.
         //       Once the feature is stable set the default here to true to enable for
         //       newly created Torch deployments.
+        private string _gpsDescriptionString = "Global Radar Signal";
+        private bool _useConnectedGrids = false;
+
+        public string GpsDescriptionString { get => _gpsDescriptionString; set => SetValue(ref _gpsDescriptionString, value); }
+        public bool UseConnectedGrids { get => _useConnectedGrids; set => SetValue(ref _useConnectedGrids, value); }
 
         [Display(Order = 1, GroupName = "General", Name = "Enable plugin", Description = "Enable the plugin")]
         public bool Enabled
