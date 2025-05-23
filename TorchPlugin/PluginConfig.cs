@@ -15,10 +15,9 @@ namespace TorchPlugin
         //       at first, so admins can enable them first on their test deployments.
         //       Once the feature is stable set the default here to true to enable for
         //       newly created Torch deployments.
-        private string _gpsDescriptionString = "Global Radar Signal";
-        private bool _useConnectedGrids = false;
+        private string gpsDescriptionString = "Global Radar Signal";
+        private bool useConnectedGrids = false;
 
-        public string GpsDescriptionString { get => _gpsDescriptionString; set => SetValue(ref _gpsDescriptionString, value); }
 
         //public bool UseConnectedGrids { get => _useConnectedGrids; set => SetValue(ref _useConnectedGrids, value); }
 
@@ -40,8 +39,15 @@ namespace TorchPlugin
         [Display(Order = 3, GroupName = "General", Name = "Use Connected Grids", Description = "Don't know what that means")]
         public bool UseConnectedGrids
         {
-            get => _useConnectedGrids;
-            set => SetValue(ref _useConnectedGrids, value);
+            get => useConnectedGrids;
+            set => SetValue(ref useConnectedGrids, value);
+        }
+
+        [Display(Order = 4, GroupName = "General", Name = "Gps Description String", Description = "GPS Description")]
+        public string GpsDescriptionString 
+        { 
+            get => gpsDescriptionString; 
+            set => SetValue(ref gpsDescriptionString, value); 
         }
     }
 }

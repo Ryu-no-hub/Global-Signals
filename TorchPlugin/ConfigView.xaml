@@ -22,6 +22,9 @@
             <RowDefinition Height="Auto" />
             <RowDefinition Height="Auto" />
             <!-- TODO: Add row definitions if you start using new rows -->
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
         </Grid.RowDefinitions>
 
         <!-- Title -->
@@ -36,6 +39,11 @@
         <CheckBox Grid.Row="2" Grid.Column="1" Name="DetectCodeChanges" IsChecked="{Binding DetectCodeChanges}" Margin="5" />
         <TextBlock Grid.Row="2" Grid.Column="2" Grid.ColumnSpan="2" Text="Enables checking for changes in patched game code (disable this on Proton/Linux)" VerticalAlignment="Center" Margin="5" />
 
+        <TextBlock Grid.Row="3" Grid.Column="0" Text="Use connected grids" VerticalAlignment="Center" Margin="5" />
+        <CheckBox Grid.Row="3" Grid.Column="1" Grid.ColumnSpan="3" Name="UseConnectedGrids" IsChecked="{Binding UseConnectedGrids}" Margin="5" />
+
+        <TextBlock Grid.Row="4" Grid.Column="0" Text="Gps description string" VerticalAlignment="Center" Margin="5" />
+        <TextBox Grid.Row="4" Grid.Column="2" Grid.ColumnSpan="1" Name="GpsDescriptionString" Text="{Binding GpsDescriptionString}" Margin="5" TextChanged="NameOfStringProperty_TextChanged" />
         <!-- TODO: Add UI for your configuration properties, examples:
 
         <TextBlock Grid.Row="3" Grid.Column="0" Text="Label of String Property" VerticalAlignment="Center" Margin="5"/>

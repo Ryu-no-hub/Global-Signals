@@ -9,6 +9,7 @@ using System.Windows.Controls;
 using HarmonyLib;
 using Sandbox.Game;
 using Sandbox.Game.Entities;
+using Sandbox.Game.Multiplayer;
 using Sandbox.Game.Screens.Helpers;
 using Sandbox.Game.World;
 using Sandbox.ModAPI;
@@ -21,9 +22,12 @@ using Torch.API;
 using Torch.API.Managers;
 using Torch.API.Plugins;
 using Torch.API.Session;
+using Torch.Commands.Permissions;
+using Torch.Commands;
 using Torch.Session;
 using VRage.Game.ModAPI;
 using VRage.Utils;
+using VRageMath;
 
 namespace TorchPlugin
 {
@@ -51,7 +55,9 @@ namespace TorchPlugin
         private bool failed;
         public string GpsIdentifierName { get { return Config.GpsDescriptionString; } }
         public bool UseConnectedGrids { get { return Config.UseConnectedGrids; } }
+        //public List<KeyValuePair<MyCubeGrid, DateTime>> gridsDetectable = new List<KeyValuePair<MyCubeGrid, DateTime>>();
         public List<MyCubeGrid> gridsDetectable = new List<MyCubeGrid>();
+        public DateTime lastFindTime = DateTime.Now;
 
         // ReSharper disable once UnusedMember.Local
         private readonly Commands commands = new Commands();
@@ -150,7 +156,7 @@ namespace TorchPlugin
         public void RemoveGpsFromAllPlayers()
         {
 
-            Log.Info("Removing GPS from all Players.");
+            //Log.Info("Removing GPS from all Players.");
 
             foreach (var identity in MySession.Static.Players.GetAllIdentities())
                 RemoveGpsFromPlayer(identity.IdentityId);
@@ -175,7 +181,7 @@ namespace TorchPlugin
                 if (desc == null)
                     continue;
 
-                if (!desc.Contains("by " + GpsIdentifierName) || !desc.Contains("Top Grid:"))
+                if (!desc.Contains(GpsIdentifierName))
                     continue;
 
                 MyAPIGateway.Session?.GPS.RemoveGps(idendity, gps);
@@ -184,8 +190,124 @@ namespace TorchPlugin
         private void CustomUpdate()
         {
             // TODO: Put your update processing here. It is called on every simulation frame!
+            if (initialized)
+            {
+                if (DateTime.Now - lastFindTime > TimeSpan.FromSeconds(3))
+                {
+                    FindGrids(true);
+                    ShowGrids();
+                    lastFindTime = DateTime.Now;
+                    //Log.Info("Update signals");
+                }
+            }
+            //{
+                //foreach (var grid in gridsDetectable)
+                //{
+                //    grid.NaturalGravity
+                //}
 
+                //// Process Radar Blocks
+                //RadarProcess.Process();
+
+                //// Process Hud Markers
+                //HudMarkManager.Process();
+
+                //m_lastUpdate = DateTime.Now;
+            //}
             PatchHelpers.PatchUpdates();
+        }
+
+        public void FindGrids(bool connected)
+        {
+            List<MyCubeGrid> gridsList = new List<MyCubeGrid>();
+
+            if (connected)
+            {
+
+                foreach (var group in MyCubeGridGroups.Static.Physical.Groups)
+                {
+                    foreach (var groupNodes in group.Nodes)
+                    {
+                        MyCubeGrid cubeGrid = groupNodes.NodeData;
+
+                        if (cubeGrid.Physics == null)
+                            continue;
+
+                        if (cubeGrid.NaturalGravity.Length() > 0)
+                            continue;
+
+                        gridsList.Add(cubeGrid);
+                    }
+                }
+            }
+            else
+            {
+
+                foreach (var group in MyCubeGridGroups.Static.Mechanical.Groups)
+                {
+                    foreach (var groupNodes in group.Nodes)
+                    {
+                        MyCubeGrid cubeGrid = groupNodes.NodeData;
+
+                        if (cubeGrid.Physics == null)
+                            continue;
+
+                        if (cubeGrid.NaturalGravity.Length() > 0)
+                            continue;
+
+                        gridsList.Add(cubeGrid);
+                    }
+                }
+            }
+            gridsDetectable = gridsList;
+            lastFindTime = DateTime.Now;
+        }
+
+        [Command("showgrids", "Shows detectable grids")]
+        [Permission(MyPromoteLevel.Admin)]
+        public void ShowGrids()
+        {
+            RemoveGpsFromAllPlayers();
+
+            MyGpsCollection gpsCollection = (MyGpsCollection)MyAPIGateway.Session?.GPS;
+
+            if (gpsCollection == null)
+                return;
+
+            List<MyCubeGrid> gridsList = gridsDetectable;
+
+            foreach (MyPlayer player in MySession.Static.Players.GetOnlinePlayers())
+            {
+                foreach (var grid in gridsList)
+                {
+                    Vector3D position = grid.PositionComp.GetPosition();
+
+                    //var description = ($"Detected by Global Radar");
+
+                    MyGps gps = CreateGps(position, grid.DisplayName, GpsIdentifierName);
+                    MyGps gpsRef = gps;
+
+                    long entity = 0L;
+                    gpsCollection.SendAddGpsRequest(player.Identity.IdentityId, ref gpsRef, entity, false);
+                }
+            }
+
+        }
+        private MyGps CreateGps(Vector3D position, string name, string description)
+        {
+            MyGps gps = new MyGps
+            {
+                Coords = position,
+                Name = name,
+                DisplayName = name,
+                Description = description,
+                GPSColor = new Color(102, 255, 255),
+                IsContainerGPS = true,
+                ShowOnHud = true,
+                DiscardAt = new TimeSpan?()
+            };
+
+            return gps;
         }
     }
 }

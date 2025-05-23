@@ -12,5 +12,10 @@ namespace TorchPlugin
             InitializeComponent();
             DataContext = Common.Config;
         }
+
+        private void NameOfStringProperty_TextChanged(object sender, TextChangedEventArgs e)
+        {
+
+        }
     }
 }

@@ -123,132 +123,16 @@ namespace TorchPlugin
 
         [Command("findgrids", "Finds detectable grids")]
         [Permission(MyPromoteLevel.Admin)]
-        public void FindGrids(bool connected)
-        {
-            //List<KeyValuePair<long, List<MyCubeGrid>>> gridsList = new List<KeyValuePair<long, List<MyCubeGrid>>>();
-            List<MyCubeGrid> gridsList = new List<MyCubeGrid>();
-
-            if (connected)
-            {
-
-                foreach (var group in MyCubeGridGroups.Static.Physical.Groups)
-                {
-                    //var grids = CheckGroupsPcu(group.Nodes, Plugin.Config);
-                    foreach (var groupNodes in group.Nodes)
-                    {
-                        MyCubeGrid cubeGrid = groupNodes.NodeData;
-
-                        if (cubeGrid.Physics == null)
-                            continue;
-
-                        if (cubeGrid.NaturalGravity.Length() > 0)
-                            continue;
-
-                        gridsList.Add(cubeGrid);
-
-                        //pcu += cubeGrid.BlocksPCU;
-
-                        //if (config.ExcludeProjectionPCU)
-                        //    pcu -= CountProjectionPCU(cubeGrid);
-                    }
-                }
-            }
-            else
-            {
-
-                foreach (var group in MyCubeGridGroups.Static.Mechanical.Groups)
-                {
-
-                    //var grids = CheckGroupsPcu(group.Nodes, Plugin.Config);
-
-                    //if (grids.Value.Count > 0)
-                    //    gridsList.Add(grids);
-
-                    foreach (var groupNodes in group.Nodes)
-                    {
-                        MyCubeGrid cubeGrid = groupNodes.NodeData;
-
-                        if (cubeGrid.Physics == null)
-                            continue;
-
-                        if (cubeGrid.NaturalGravity.Length() > 0)
-                            continue;
-
-                        gridsList.Add(cubeGrid);
-                    }
-                }
-            }
-            Plugin.gridsDetectable = gridsList;
-
-            //gridsList.Sort(delegate (KeyValuePair<long, List<MyCubeGrid>> pair1, KeyValuePair<long, List<MyCubeGrid>> pair2) {
-            //    return pair2.Key.CompareTo(pair1.Key);
-            //});
-
-            //Context.Respond("SendGridsInternal");
-            //return gridsList;
+        public void FindGridsCommand(bool connected)
+        {            
+            Plugin.FindGrids(true);
         }
 
         [Command("showgrids", "Shows detectable grids")]
         [Permission(MyPromoteLevel.Admin)]
-        public void ShowGrids(string name, string value)
+        public void ShowGridsCommand()
         {
-            Plugin.RemoveGpsFromAllPlayers();
-
-            MyGpsCollection gpsCollection = (MyGpsCollection)MyAPIGateway.Session?.GPS;
-
-            if (gpsCollection == null)
-                return;
-
-            List<MyCubeGrid> gridsList = Plugin.gridsDetectable;
-
-            foreach (MyPlayer player in MySession.Static.Players.GetOnlinePlayers())
-            {
-                foreach (var grid in gridsList)
-                {
-                    Vector3D position = grid.PositionComp.GetPosition();
-
-                    var description = ($"Detected by Global Radar");
-
-                    //IMyGps gps = MyAPIGateway.Session.GPS.Create(grid.DisplayName, description, position, true);
-                    //gpsCollection.AddPlayerGps AddGps(entity, gps);
-                    MyGps gps = CreateGps(position, grid.DisplayName, description);
-                    MyGps gpsRef = gps;
-
-                    //MyGps gps = new MyGps()
-
-                    long entity = 0L;
-                    gpsCollection.SendAddGpsRequest(player.Identity.IdentityId, ref gpsRef, entity);
-                }
-            }
-
-            //HashSet<Vector3> gpsSet = new HashSet<Vector3>();
-            //List<MyGps> gpsList = new List<MyGps>();
-
-            //long seconds = GetTimeMs();
-            //AddToList(gpsSet, gpsList, FindGrids(Plugin.UseConnectedGrids));
-
-            //if (gpsSet.Count > 0)
-            //    SendGps(gpsList, Plugin.Config);
-
-            Context.Respond("Showing grids");
-        }
-        private MyGps CreateGps(Vector3D position, string name, string description)
-        {
-            MyGps gps = new MyGps
-            {
-                Coords = position,
-                Name = name,
-                DisplayName = name,
-                Description = description,
-                GPSColor = new Color(102, 255, 255),
-                IsContainerGPS = true,
-                ShowOnHud = true,
-                DiscardAt = new TimeSpan?()
-            };
-            //gps.UpdateHash();
-            //gps.SetEntityId(grid.EntityId);
-
-            return gps;
+            Plugin.ShowGrids();
         }
 
         //private KeyValuePair<long, List<MyCubeGrid>> CheckGroupsPcu(HashSetReader<MyGroups<MyCubeGrid, MyGridMechanicalGroupData>.Node> nodes, GlobalSignalsConfig config)
