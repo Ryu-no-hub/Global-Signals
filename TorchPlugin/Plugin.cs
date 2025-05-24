@@ -28,6 +28,15 @@ using Torch.Session;
 using VRage.Game.ModAPI;
 using VRage.Utils;
 using VRageMath;
+using VRage.RemoteClient.Core;
+using Sandbox.Game.GameSystems;
+using System.Windows.Documents;
+using Torch.Server.ViewModels.Entities;
+using VRage.ModAPI;
+using static Sandbox.Game.AI.Pathfinding.Obsolete.MyGridPathfinding;
+using Sandbox.Engine.Multiplayer;
+using VRage.Game.Components;
+using static VRage.Profiler.MyProfilerBlock;
 
 namespace TorchPlugin
 {
@@ -226,9 +235,9 @@ namespace TorchPlugin
 
                 foreach (var group in MyCubeGridGroups.Static.Physical.Groups)
                 {
-                    foreach (var groupNodes in group.Nodes)
+                    foreach (var groupNode in group.Nodes)
                     {
-                        MyCubeGrid cubeGrid = groupNodes.NodeData;
+                        MyCubeGrid cubeGrid = groupNode.NodeData;
 
                         if (cubeGrid.Physics == null)
                             continue;
@@ -263,8 +272,6 @@ namespace TorchPlugin
             lastFindTime = DateTime.Now;
         }
 
-        [Command("showgrids", "Shows detectable grids")]
-        [Permission(MyPromoteLevel.Admin)]
         public void ShowGrids()
         {
             RemoveGpsFromAllPlayers();
@@ -309,5 +316,46 @@ namespace TorchPlugin
 
             return gps;
         }
+
+        //public void Clean()
+        //{
+        //    var gridsToRemove = new List<MyCubeGrid>();
+
+        //    foreach (var group in MyCubeGridGroups.Static.Physical.Groups)
+        //    {
+        //        foreach (var groupNode in group.Nodes)
+        //        {
+        //            MyCubeGrid cubeGrid = groupNode.NodeData;
+
+        //            if (cubeGrid.Physics == null)
+        //                continue;
+
+        //            bool hasOwnerPlate = false;
+        //            var blocks = cubeGrid.GetBlocks();
+        //            MyVisualScriptLogicProvider.SendChatMessage($"Checking grid {cubeGrid.DisplayName}");
+
+        //            foreach (var block in blocks)
+        //            {
+        //                if ((block.BlockDefinition.Id.SubtypeName == "OwnerSEPSE.Small") || (block.BlockDefinition.Id.SubtypeName == "OwnerSEPSE.Large"))
+        //                {
+        //                    hasOwnerPlate = true;
+        //                    MyVisualScriptLogicProvider.SendChatMessage($"Grid {cubeGrid.DisplayName} has ownerblock {block.BlockDefinition.DisplayNameText}");
+        //                    break; // no need to continue once found
+        //                }
+        //            }
+
+        //            if (!hasOwnerPlate)
+        //            {
+        //                // Mark for removal instead of removing immediately
+        //                gridsToRemove.Add(cubeGrid);
+        //            }
+        //        }
+        //    }
+        //    foreach (var grid in gridsToRemove)
+        //    {
+        //        MyVisualScriptLogicProvider.SendChatMessage($"Deleted: {grid.DisplayName}");
+        //        MyAPIGateway.Entities.RemoveEntity(grid);
+        //    }
+        //}
     }
 }
