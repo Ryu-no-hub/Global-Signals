@@ -7,8 +7,10 @@ using System.Linq;
 using System.Text;
 using System.Threading;
 using System.Windows.Controls;
+using GlobalSignals.Shared.Runtime;
 using HarmonyLib;
 using Newtonsoft.Json;
+using NLog;
 using Sandbox.Common.ObjectBuilders;
 using Sandbox.Game;
 using Sandbox.Game.Entities;
@@ -83,7 +85,11 @@ namespace TorchPlugin
 
         private static readonly Dictionary<MyDefinitionId, double> WeaponDps = new Dictionary<MyDefinitionId, double>(MyDefinitionId.Comparer);
 
+        // Asteroid Filter
+        //public static readonly Logger Log = LogManager.GetCurrentClassLogger();
 
+        private Harmony _harmony;
+        private const string HarmonyId = "globalsignals.orefilter.ringasteroids";
 
         // ReSharper disable once UnusedMember.Local
         private readonly Commands commands = new Commands();
@@ -92,6 +98,19 @@ namespace TorchPlugin
         public override void Init(ITorchBase torch)
         {
             base.Init(torch);
+
+            // Asteroid Filter
+            string asteroidOresConfigPath = Path.Combine(StoragePath ?? ".", "OreFilterConfig.xml");
+
+            OreFilterState.Initialize(Log, asteroidOresConfigPath);
+            OreFilterState.Load();
+
+            _harmony = new Harmony(HarmonyId);
+            _harmony.PatchAll(typeof(Plugin).Assembly);
+
+            Log.Info("[OreFilter] Harmony patches applied.");
+            //
+
 
             WeaponDps.Clear();
 #if DEBUG
@@ -341,6 +360,18 @@ namespace TorchPlugin
                 sessionManager = null;
 
                 Log.Debug("Disposed");
+            }
+
+            try
+            {
+                if (_harmony != null)
+                    _harmony.UnpatchAll(HarmonyId);
+
+                Log.Info("[OreFilter] Harmony patches removed.");
+            }
+            catch (Exception ex)
+            {
+                Log.Error(ex, "[OreFilter] Failed to unpatch Harmony.");
             }
 
             Instance = null;

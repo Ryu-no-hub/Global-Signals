@@ -10,6 +10,7 @@
   </PropertyGroup>
   <ItemGroup>
     <Compile Include="$(MSBuildThisFileDirectory)Config\IPluginConfig.cs" />
+    <Compile Include="$(MSBuildThisFileDirectory)Config\OreFilterConfig.cs" />
     <Compile Include="$(MSBuildThisFileDirectory)Config\PersistentConfig.cs" />
     <Compile Include="$(MSBuildThisFileDirectory)Config\PluginConfig.cs" />
     <Compile Include="$(MSBuildThisFileDirectory)Logging\IPluginLogger.cs" />
@@ -19,11 +20,33 @@
     <Compile Include="$(MSBuildThisFileDirectory)Patches\ExampleServerPatch.cs" />
     <Compile Include="$(MSBuildThisFileDirectory)Patches\ExampleTranspilerPatch.cs" />
     <Compile Include="$(MSBuildThisFileDirectory)Patches\PatchHelpers.cs" />
+    <Compile Include="$(MSBuildThisFileDirectory)Patches\RingAsteroidsCreateProceduralAsteroidPatch.cs" />
     <Compile Include="$(MSBuildThisFileDirectory)Plugin\Common.cs" />
     <Compile Include="$(MSBuildThisFileDirectory)Plugin\ICommonPlugin.cs" />
+    <Compile Include="$(MSBuildThisFileDirectory)Runtime\OreFilterState.cs" />
     <Compile Include="$(MSBuildThisFileDirectory)Tools\CodeChange.cs" />
     <Compile Include="$(MSBuildThisFileDirectory)Tools\EnsureCode.cs" />
     <Compile Include="$(MSBuildThisFileDirectory)Tools\Hashing.cs" />
+    <Compile Include="$(MSBuildThisFileDirectory)Tools\OctreeStorage\ByteArrayBuffer.cs" />
+    <Compile Include="$(MSBuildThisFileDirectory)Tools\OctreeStorage\OctreeStorage.cs" />
+    <Compile Include="$(MSBuildThisFileDirectory)Tools\OctreeStorage\OctreeStorageChunk.cs" />
+    <Compile Include="$(MSBuildThisFileDirectory)Tools\OctreeStorage\OctreeStorageChunkType.cs" />
+    <Compile Include="$(MSBuildThisFileDirectory)Tools\OctreeStorage\Chunks\CompositeShapeProvider.cs" />
+    <Compile Include="$(MSBuildThisFileDirectory)Tools\OctreeStorage\Chunks\ContentLeaf.cs" />
+    <Compile Include="$(MSBuildThisFileDirectory)Tools\OctreeStorage\Chunks\ContentLeafOctree.cs" />
+    <Compile Include="$(MSBuildThisFileDirectory)Tools\OctreeStorage\Chunks\ContentLeafProvider.cs" />
+    <Compile Include="$(MSBuildThisFileDirectory)Tools\OctreeStorage\Chunks\DataProvider.cs" />
+    <Compile Include="$(MSBuildThisFileDirectory)Tools\OctreeStorage\Chunks\EOF.cs" />
+    <Compile Include="$(MSBuildThisFileDirectory)Tools\OctreeStorage\Chunks\MacroContentNodes.cs" />
+    <Compile Include="$(MSBuildThisFileDirectory)Tools\OctreeStorage\Chunks\MacroMaterialNodes.cs" />
+    <Compile Include="$(MSBuildThisFileDirectory)Tools\OctreeStorage\Chunks\MaterialIndexEntry.cs" />
+    <Compile Include="$(MSBuildThisFileDirectory)Tools\OctreeStorage\Chunks\MaterialIndexTable.cs" />
+    <Compile Include="$(MSBuildThisFileDirectory)Tools\OctreeStorage\Chunks\MaterialLeaf.cs" />
+    <Compile Include="$(MSBuildThisFileDirectory)Tools\OctreeStorage\Chunks\MaterialLeafOctree.cs" />
+    <Compile Include="$(MSBuildThisFileDirectory)Tools\OctreeStorage\Chunks\MaterialLeafProvider.cs" />
+    <Compile Include="$(MSBuildThisFileDirectory)Tools\OctreeStorage\Chunks\MetaData.cs" />
+    <Compile Include="$(MSBuildThisFileDirectory)Tools\OctreeStorage\Chunks\OctreeNode.cs" />
+    <Compile Include="$(MSBuildThisFileDirectory)Tools\OctreeStorage\Chunks\PlanetStorageProvider.cs" />
     <Compile Include="$(MSBuildThisFileDirectory)Tools\TranspilerHelpers.cs" />
     <Compile Include="$(MSBuildThisFileDirectory)Tools\WineDetector.cs" />
   </ItemGroup>
