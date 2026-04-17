@@ -1,23 +1,8 @@
-using Sandbox.Game.Entities;
-using Sandbox.Game.Multiplayer;
-using Sandbox.Game.Screens.Helpers;
-using Sandbox.Game.World;
-using Sandbox.ModAPI;
-using System.Collections.Generic;
-using System;
-using Shared.Config;
-using Shared.Plugin;
 using Torch.Commands;
 using Torch.Commands.Permissions;
 using VRage.Game.ModAPI;
-using VRageMath;
 using NLog;
-using VRage.Collections;
-using VRage.Groups;
-using VRage.Game;
-using Sandbox.Game.GameSystems;
-using Sandbox.Game.GUI;
-using static Sandbox.Game.Gui.MyGuiScreenToolbarConfigBase;
+using System.Text;
 
 namespace TorchPlugin
 {
@@ -25,6 +10,7 @@ namespace TorchPlugin
     {
         //private static IPluginConfig Config => Common.Config;
         public static readonly Logger Log = LogManager.GetCurrentClassLogger();
+        StringBuilder resultSB = new StringBuilder();
 
         public Plugin Plugin => (Plugin)Context.Plugin;
 
@@ -37,25 +23,67 @@ namespace TorchPlugin
         // TODO: Implement subcommands as needed
         private void RespondWithHelp()
         {
-            Respond("GlobalSignals commands:");
-            Respond("  !findgrigs info");
-            Respond("    Prints the current configuration settings.");
-            Respond("  !findgrigs enable");
-            Respond("    Enables the plugin");
-            Respond("  !findgrigs disable");
-            Respond("    Disables the plugin");
-            Respond("  !findgrigs subcmd <name> <value>");
-            Respond("    TODO Your subcommand");
+            Respond("Global Mechanics commands:");
+            Respond("  !gm settings");
+            Respond("    Show current configuration");
+
+            Respond("  !gm scores update");
+            Respond("    Updates factions scores");
+
+            Respond("  !gm scores showfactions");
+            Respond("    Displays factions scores");
+
+            Respond("  !gm scores enlistfactions");
+            Respond("    Update factions list");
+
+            Respond("  !gm scores drawpoints");
+            Respond("    Draw covered planet points (Earthlike)");
+
+            Respond("  !gm scores removepoints");
+            Respond("    Remove covered planet points (Earthlike)");
+
+            Respond("  !gm gs enable");
+            Respond("    Enables global signals in space");
+
+            Respond("  !gm gs disable");
+            Respond("    Disables global signals in space");
+
+            Respond("  !gm gs findgrids");
+            Respond("    Finds detectable grids");
+
+            Respond("  !gm gs showgrids");
+            Respond("    Shows detectable grids");
+
+            //Respond("  !globalsignals subcmd <name> <value>");
+            //Respond("    TODO Your subcommand");
         }
 
         private void RespondWithInfo()
         {
+            StringBuilder sb = new StringBuilder();
             var config = Plugin.Instance.Config;
-            Respond($"{Plugin.PluginName} plugin is enabled: {Format(config.Enabled)}");
+
+            sb.AppendLine($"{Plugin.PluginName}:");
+            sb.AppendLine($"Global signals: enabled: {Format(config.GlobalSignals)}");
+            sb.AppendLine($"Global signals: use connected grids: {Format(config.UseConnectedGrids)}");
+            sb.AppendLine($"Global signals: gps description string: '{config.GpsDescriptionString}'");
+            sb.AppendLine($"Faction scoring enabled: {Format(config.FactionScore)}");
+
+            Respond(sb.ToString());
             // TODO: Respond with your plugin settings
             // For example:
             //Respond($"custom_setting: {Format(config.CustomSetting)}");
         }
+
+        private void RespondWithFactionScores(string scores_result)
+        {
+            Respond($"{Plugin.PluginName}: \nScores: {scores_result}");
+        }
+
+        //private void RespondWithFactionsList(string factions_list)
+        //{
+        //    Respond($"{Plugin.PluginName}: Factions List: {factions_list}");
+        //}
 
         // Custom formatters
 
@@ -91,210 +119,120 @@ namespace TorchPlugin
         }
 
 
-        [Command("findgrigs help", "GlobalSignals: Help")]
+        [Command("gm help", "Global Mechanics: Help")]
         [Permission(MyPromoteLevel.None)]
         public void Help()
         {
             RespondWithHelp();
         }
 
-        [Command("findgrigs info", "GlobalSignals: Prints the current settings")]
+        [Command("gm settings", "Show current configuration")]
         [Permission(MyPromoteLevel.None)]
         public void Info()
         {
             RespondWithInfo();
         }
 
-        [Command("findgrigs enable", "GlobalSignals: Enables the plugin")]
+        [Command("gm scores update", "Updates factions scores")]
+        [Permission(MyPromoteLevel.Admin)]
+        public void UpdScores()
+        {
+            resultSB.Clear();
+            resultSB = Plugin.UpdateFactionsList(resultSB);
+            resultSB = Plugin.ScoreFactions(resultSB);
+            Plugin.PrintScores(resultSB);
+            //RespondWithFactionScores(resultSB.ToString());
+        }
+
+        [Command("gm scores showfactions", "Displays factions scores")]
+        [Permission(MyPromoteLevel.Admin)]
+        public void ShowScores()
+        {
+            resultSB.Clear();
+            resultSB = Plugin.ShowFactionScores(resultSB);
+            RespondWithFactionScores(resultSB.ToString());
+
+            //var ply = Context?.Player;
+            //if (ply != null)
+            //    Plugin.ShowFactionScores(ply.IdentityId);
+            //else
+            //    Plugin.ShowFactionScores();
+        }
+
+        [Command("gm scores enlistfactions", "Update factions list")]
+        [Permission(MyPromoteLevel.Admin)]
+        public void UpdFactionsList()
+        {
+            resultSB.Clear();
+            resultSB = Plugin.UpdateFactionsList(resultSB);
+            Respond($"{Plugin.PluginName}: Factions List: {resultSB}");
+        }
+
+        [Command("gm scores drawpoints", "Draw covered planet points (Earthlike)")]
+        [Permission(MyPromoteLevel.Admin)]
+        public void DrawPoints()
+        {
+            long playerId = 0;
+            var ply = Context?.Player;
+            if (ply != null)
+                playerId = ply.IdentityId;
+
+            Plugin.SendTerritoryDebugGpsToAsker(true, ply.IdentityId);
+            Respond($"{Plugin.PluginName}: DrawPoints gps are sent to you. Disappear in 3 minutes.");
+        }
+
+        [Command("gm scores removepoints", "Remove covered planet points (Earthlike)")]
+        [Permission(MyPromoteLevel.Admin)]
+        public void RemovePoints()
+        {
+            long playerId = 0;
+            var ply = Context?.Player;
+            if (ply != null)
+                playerId = ply.IdentityId;
+
+            Plugin.SendTerritoryDebugGpsToAsker(false, ply.IdentityId);
+            Respond($"{Plugin.PluginName}: DrawPoints gps are removed.");
+        }
+
+        [Command("gm gs enable", "Enables global signals in space")]
         [Permission(MyPromoteLevel.Admin)]
         public void Enable()
         {
-            Plugin.Config.Enabled = true;
+            Plugin.Config.GlobalSignals = true;
             RespondWithInfo();
         }
 
-        [Command("findgrigs disable", "GlobalSignals: Disables the plugin")]
+        [Command("gm gs disable", "Disables global signals in space")]
         [Permission(MyPromoteLevel.Admin)]
         public void Disable()
         {
-            Plugin.Config.Enabled = false;
+            Plugin.Config.GlobalSignals = false;
+            Plugin.RemoveGpsFromAllPlayers();
             RespondWithInfo();
         }
 
-        [Command("findgrids", "Finds detectable grids")]
+        [Command("gm gs findgrids", "Finds detectable grids")]
         [Permission(MyPromoteLevel.Admin)]
         public void FindGridsCommand(bool connected)
         {            
             Plugin.FindGrids(true);
+            Respond("Grids found.");
         }
 
-        [Command("showgrids", "Shows detectable grids")]
+        [Command("gm gs showgrids", "Shows detectable grids")]
         [Permission(MyPromoteLevel.Admin)]
         public void ShowGridsCommand()
         {
             Plugin.ShowGrids();
+            Respond("Grids shown.");
         }
 
-        //private KeyValuePair<long, List<MyCubeGrid>> CheckGroupsPcu(HashSetReader<MyGroups<MyCubeGrid, MyGridMechanicalGroupData>.Node> nodes, GlobalSignalsConfig config)
-        //{
-
-        //    List<MyCubeGrid> gridsList = new List<MyCubeGrid>();
-        //    long pcu = 0;
-
-        //    foreach (var groupNodes in nodes)
-        //    {
-
-        //        MyCubeGrid cubeGrid = groupNodes.NodeData;
-
-        //        if (cubeGrid.Physics == null)
-        //            continue;
-
-        //        if (!IsGridInGravity(cubeGrid, config))
-        //            continue;
-
-        //        gridsList.Add(cubeGrid);
-
-        //        pcu += cubeGrid.BlocksPCU;
-
-        //        if (config.ExcludeProjectionPCU)
-        //            pcu -= CountProjectionPCU(cubeGrid);
-        //    }
-
-        //    return new KeyValuePair<long, List<MyCubeGrid>>(pcu, gridsList);
-        //}
-
-        //private KeyValuePair<long, List<MyCubeGrid>> CheckGroupsPcu(HashSetReader<MyGroups<MyCubeGrid, MyGridPhysicalGroupData>.Node> nodes, GlobalSignalsConfig config)
-        //{
-
-        //    List<MyCubeGrid> gridsList = new List<MyCubeGrid>();
-        //    long pcu = 0;
-
-        //    foreach (var groupNodes in nodes)
-        //    {
-
-        //        MyCubeGrid cubeGrid = groupNodes.NodeData;
-
-        //        if (cubeGrid.Physics == null)
-        //            continue;
-
-        //        if (!IsGridInsideFilter(cubeGrid, config))
-        //            continue;
-
-        //        gridsList.Add(cubeGrid);
-
-        //        pcu += cubeGrid.BlocksPCU;
-
-        //        if (config.ExcludeProjectionPCU)
-        //            pcu -= CountProjectionPCU(cubeGrid);
-        //    }
-
-        //    return new KeyValuePair<long, List<MyCubeGrid>>(pcu, gridsList);
-        //}
-
-        //private void AddToList(HashSet<Vector3> positions, List<MyGps> returnList, List<MyGps> inputList)
-        //{
-
-        //    foreach (var gps in inputList)
-        //    {
-
-        //        if (positions.Contains(gps.Coords))
-        //            continue;
-
-        //        positions.Add(gps.Coords);
-        //        returnList.Add(gps);
-        //    }
-        //}
-
-        //private List<MyGps> FindGrids(IGridDetectionStrategy gridDetectionStrategy, int min, int distance, bool ignoreOffline, bool ignoreNpcs, long seconds)
-        //{
-
-        //    List<KeyValuePair<long, List<MyCubeGrid>>> grids = gridDetectionStrategy.FindGrids(Plugin.Config, Plugin.UseConnectedGrids);
-        //    List<KeyValuePair<long, List<MyCubeGrid>>> filteredGrids = gridDetectionStrategy.GetFilteredGrids(grids,
-        //        min, distance, Plugin.TopGrids, ignoreOffline, ignoreNpcs);
-
-        //    List<MyGps> gpsList = new List<MyGps>();
-
-        //    int i = 0;
-
-        //    foreach (KeyValuePair<long, List<MyCubeGrid>> pair in filteredGrids)
-        //    {
-
-        //        i++;
-
-        //        MyCubeGrid grid = pair.Value[0]; /* Cannot be empty because where do the PCUs come from? */
-
-        //        var position = grid.PositionComp.GetPosition();
-
-        //        if (Plugin.LogBroadcastedGrids)
-        //            LogGrid(grid, gridDetectionStrategy);
-
-        //        MyGps gps = CreateGps(i, grid, seconds, gridDetectionStrategy.GetDetectionType());
-
-        //        gpsList.Add(gps);
-        //    }
-
-        //    return gpsList;
-        //}
-
-        //private void LogGrid(MyCubeGrid grid, IGridDetectionStrategy gridDetectionStrategy)
-        //{
-
-        //    try
-        //    {
-
-        //        long ownerId = OwnershipUtils.GetOwner(grid);
-
-        //        string name = PlayerUtils.GetPlayerNameById(ownerId);
-
-        //        IMyFaction faction = GetFactionForPlayer(ownerId);
-
-        //        string factionString = "";
-        //        if (faction != null)
-        //            factionString = "[" + faction.Tag + "]";
-
-        //        string ownedString = "Owned by: " + name + " " + factionString;
-
-        //        long gridId = grid.EntityId;
-        //        string gridName = grid.DisplayName;
-
-        //        Log.Info("Broadcasted " + gridId + " " + gridName + " " + ownedString + " for '" + gridDetectionStrategy.GetStrategyName() + "'");
-
-        //    }
-        //    catch (Exception e)
-        //    {
-        //        Log.Error(e);
-        //    }
-        //}
-
-        //private void SendGps(IEnumerable<MyGps> gpsSet, IPluginConfig config)
-        //{
-
-        //    MyGpsCollection gpsCollection = (MyGpsCollection)MyAPIGateway.Session?.GPS;
-
-        //    if (gpsCollection == null)
-        //        return;
-
-        //    bool followGrids = config.GpsFollowGrids;
-        //    bool playSound = config.PlayGpsSound;
-
-        //    foreach (MyPlayer player in MySession.Static.Players.GetOnlinePlayers())
-        //    {
-        //        foreach (MyGps gps in gpsSet)
-        //        {
-
-        //            MyGps gpsRef = gps;
-
-        //            long entityId = 0L;
-        //            if (followGrids)
-        //                entityId = gps.EntityId;
-
-        //            gpsCollection.SendAddGpsRequest(player.Identity.IdentityId, ref gpsRef, entityId, playSound);
-        //        }
-        //    }
-        //}
-        //private long GetTimeMs()
-        //{
-        //    return (long)(DateTime.Now.ToUniversalTime() - new DateTime(1970, 1, 1)).TotalMilliseconds;
-        //}
+        [Command("gm gs hidegrids", "Hides detectable grids")]
+        [Permission(MyPromoteLevel.Admin)]
+        public void HideGridsCommand()
+        {
+            Plugin.RemoveGpsFromAllPlayers();
+            Respond("Grids hidden.");
+        }
     }
 }

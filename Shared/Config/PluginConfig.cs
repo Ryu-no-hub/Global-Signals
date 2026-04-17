@@ -31,6 +31,8 @@ namespace Shared.Config
 
         private bool enabled = true;
         private bool detectCodeChanges = true;
+        private string gpsDescription = "liuhlo";
+        private bool useConnectedGrids = true;
         // TODO: Implement your config fields here
         // The default values here will apply to Client and Dedicated.
         // The default values for Torch are defined in TorchPlugin.
@@ -45,6 +47,18 @@ namespace Shared.Config
         {
             get => detectCodeChanges;
             set => SetValue(ref detectCodeChanges, value);
+        }
+
+        public string GpsDescriptionString
+        {
+            get => gpsDescription;
+            set => SetValue(ref gpsDescription, value);
+        }
+
+        public bool UseConnectedGrids
+        {
+            get => useConnectedGrids;
+            set => SetValue(ref useConnectedGrids, value);
         }
 
         // TODO: Encapsulate your config fields as properties here
