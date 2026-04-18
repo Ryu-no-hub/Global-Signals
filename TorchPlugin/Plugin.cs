@@ -6,7 +6,9 @@ using System.IO;
 using System.Linq;
 using System.Text;
 using System.Threading;
+using System.Timers;
 using System.Windows.Controls;
+using GlobalSignals.Shared.Patches;
 using GlobalSignals.Shared.Runtime;
 using HarmonyLib;
 using Newtonsoft.Json;
@@ -86,9 +88,10 @@ namespace TorchPlugin
         private static readonly Dictionary<MyDefinitionId, double> WeaponDps = new Dictionary<MyDefinitionId, double>(MyDefinitionId.Comparer);
 
         // Asteroid Filter
-        //public static readonly Logger Log = LogManager.GetCurrentClassLogger();
-
         private Harmony _harmony;
+        private System.Timers.Timer _patchTimer;
+        private bool _patchApplied;
+        private int _patchAttempts;
         private const string HarmonyId = "globalsignals.orefilter.ringasteroids";
 
         // ReSharper disable once UnusedMember.Local
@@ -106,11 +109,8 @@ namespace TorchPlugin
             OreFilterState.Load();
 
             _harmony = new Harmony(HarmonyId);
-            _harmony.PatchAll(typeof(Plugin).Assembly);
-
-            Log.Info("[OreFilter] Harmony patches applied.");
+            StartPatchRetryTimer();
             //
-
 
             WeaponDps.Clear();
 #if DEBUG
@@ -196,6 +196,15 @@ namespace TorchPlugin
 
             initialized = true;
         }
+        private void StartPatchRetryTimer()
+        {
+            _patchTimer = new System.Timers.Timer(5000);
+            _patchTimer.AutoReset = true;
+            _patchTimer.Elapsed += OnPatchTimerElapsed;
+            _patchTimer.Start();
+
+            Log.Info("[OreFilter] Delayed patch timer started.");
+        }
 
         public static void RegisterRadar(MyFunctionalBlock block)
         {
@@ -211,6 +220,38 @@ namespace TorchPlugin
 
             if (!list.Contains(block))
                 list.Add(block);
+        }
+        private void OnPatchTimerElapsed(object sender, ElapsedEventArgs e)
+        {
+            if (_patchApplied)
+                return;
+
+            _patchAttempts++;
+
+            bool success = RingAsteroidsPatchBootstrap.TryPatch(
+                _harmony,
+                delegate (string msg) { Log.Info(msg); },
+                delegate (string msg) { Log.Info(msg); },
+                delegate (Exception ex, string msg) { Log.Error(ex, msg); });
+
+            if (success)
+            {
+                _patchApplied = true;
+
+                if (_patchTimer != null)
+                {
+                    _patchTimer.Stop();
+                    _patchTimer.Dispose();
+                    _patchTimer = null;
+                }
+
+                Log.Info("[OreFilter] Patch applied after attempt #" + _patchAttempts);
+            }
+            else
+            {
+                if (_patchAttempts % 6 == 0)
+                    Log.Info("[OreFilter] Waiting for mod load. Attempts: " + _patchAttempts);
+            }
         }
 
         public static void UnregisterRadar(MyFunctionalBlock block)
@@ -250,11 +291,9 @@ namespace TorchPlugin
                     if (func.BlockDefinition.Id.SubtypeName != "LG_D2A_R")
                         continue;
 
-                    // просто регистрируем радар у владельца
                     RegisterRadar(func);
                     Instance?.Log.Info("InitIdentityRadars: new radar registered");
 
-                    // и сразу подвешиваем события, чтобы дальше жить только на них
                     func.IsWorkingChanged -= RadarWorkingChanged;
                     func.IsWorkingChanged += RadarWorkingChanged;
 
@@ -277,6 +316,7 @@ namespace TorchPlugin
                     Log.Debug("Loaded");
                     FactionScoreManager.CalculateCapturableVolume();
                     InitIdentityRadars();
+
                     break;
 
                 case TorchSessionState.Unloading:
@@ -364,14 +404,19 @@ namespace TorchPlugin
 
             try
             {
+                if (_patchTimer != null)
+                {
+                    _patchTimer.Stop();
+                    _patchTimer.Dispose();
+                    _patchTimer = null;
+                }
+
                 if (_harmony != null)
                     _harmony.UnpatchAll(HarmonyId);
-
-                Log.Info("[OreFilter] Harmony patches removed.");
             }
             catch (Exception ex)
             {
-                Log.Error(ex, "[OreFilter] Failed to unpatch Harmony.");
+                Log.Error(ex, "[OreFilter] Failed during dispose.");
             }
 
             Instance = null;

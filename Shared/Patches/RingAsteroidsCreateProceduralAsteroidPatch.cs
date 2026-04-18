@@ -15,25 +15,8 @@ using VRageMath;
 
 namespace GlobalSignals.Shared.Patches
 {
-    [HarmonyPatch]
     public static class RingAsteroidsCreateProceduralAsteroidPatch
     {
-        static System.Reflection.MethodBase TargetMethod()
-        {
-            return AccessTools.Method(
-                "SERingAsteroids.RingAsteroidsComponent:CreateProceduralAsteroid",
-                new Type[]
-                {
-                    typeof(int),
-                    typeof(float),
-                    typeof(int),
-                    typeof(Vector3D),
-                    typeof(string),
-                    typeof(int)
-                });
-        }
-
-        [HarmonyPrefix]
         public static bool Prefix(
             object __instance,
             ref IMyVoxelMap __result,
@@ -79,7 +62,12 @@ namespace GlobalSignals.Shared.Patches
                     generator);
 
                 byte[] bytes = asteroid.GetBytes();
-                IMyStorage storage = MyAPIGateway.Session.VoxelMaps.CreateStorage(bytes);
+                OctreeStorage fixedStorage = RemapForbiddenMaterials(bytes);
+                if (fixedStorage == null)
+                    fixedStorage = asteroid;
+
+                byte[] fixedBytes = fixedStorage.GetBytes();
+                IMyStorage storage = MyAPIGateway.Session.VoxelMaps.CreateStorage(fixedBytes);
 
                 Vector3D spawnPos = pos - new Vector3D(
                     storage.Size.X - 1,
@@ -102,6 +90,100 @@ namespace GlobalSignals.Shared.Patches
 
                 return true;
             }
+        }
+
+        private static OctreeStorage RemapForbiddenMaterials(byte[] bytes)
+        {
+            // можно логировать подробнее, но для MVP достаточно оставить logAction null
+            OctreeStorage storage = OctreeStorage.ReadFrom(bytes, null, null);
+            if (storage == null)
+                return null;
+
+            MaterialIndexTable table = storage.MaterialIndexTable;
+            if (table == null || table.Materials == null)
+                return storage;
+
+            MaterialIndexEntry[] materials = table.Materials;
+
+            // Построить map: имя -> индексы
+            var nameToIndices = new Dictionary<string, List<int>>(StringComparer.OrdinalIgnoreCase);
+            for (int i = 0; i < materials.Length; i++)
+            {
+                string name = materials[i].Name;
+                if (string.IsNullOrEmpty(name))
+                    continue;
+
+                List<int> list;
+                if (!nameToIndices.TryGetValue(name, out list))
+                {
+                    list = new List<int>();
+                    nameToIndices[name] = list;
+                }
+                list.Add(i);
+            }
+
+            // Выбрать допустимый материал для замены
+            string replacementName = GetReplacementMaterialName(nameToIndices.Keys);
+
+            if (replacementName == null)
+                return storage; // нечем заменять, выходим
+
+            List<int> replacementIndices;
+            if (!nameToIndices.TryGetValue(replacementName, out replacementIndices) || replacementIndices.Count == 0)
+                return storage;
+
+            int replacementIndex = replacementIndices[0];
+
+            // Список запрещённых материалов (по имени)
+            var forbiddenNames = new List<string>();
+            forbiddenNames.AddRange(OreFilterState.Config.BlacklistedOres);
+
+            // Пройти по материалам и переписать запрещённые на replacement
+            for (int i = 0; i < materials.Length; i++)
+            {
+                string name = materials[i].Name;
+                if (string.IsNullOrEmpty(name))
+                    continue;
+
+                if (forbiddenNames.Contains(name, StringComparer.OrdinalIgnoreCase))
+                {
+                    // Здесь есть две стратегии:
+                    // 1) сделать эту запись точной копией replacement
+                    materials[i].Index = materials[replacementIndex].Index;
+                    materials[i].Name = materials[replacementIndex].Name;
+
+                    // 2) или вообще занулить/объединить — но 1) проще и безопаснее
+                }
+            }
+
+            table.Materials = materials;
+            storage.MaterialIndexTable = table;
+
+            return storage;
+        }
+
+        private static string GetReplacementMaterialName(IEnumerable<string> availableNames)
+        {
+            // Простая стратегия: взять первый "камень" из списка конфигурации или по названию
+            // Например:
+            var preferred = new[] { "Stone_01", "Stone_02", "Stone_03", "Stone", "SmallMoonRocks" };
+            foreach (string p in preferred)
+            {
+                foreach (string name in availableNames)
+                {
+                    if (string.Equals(name, p, StringComparison.OrdinalIgnoreCase))
+                        return name;
+                }
+            }
+
+            // Если ничего не подошло, просто взять любой не запрещённый
+            foreach (string name in availableNames)
+            {
+                if (!OreFilterState.IsBlacklisted(name))
+                    return name;
+            }
+
+            return null;
         }
 
         private static MaterialIndexEntry[] BuildOriginalMaterialPool(int voxelGeneratorVersion)

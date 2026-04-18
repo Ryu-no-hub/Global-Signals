@@ -21,6 +21,7 @@
     <Compile Include="$(MSBuildThisFileDirectory)Patches\ExampleTranspilerPatch.cs" />
     <Compile Include="$(MSBuildThisFileDirectory)Patches\PatchHelpers.cs" />
     <Compile Include="$(MSBuildThisFileDirectory)Patches\RingAsteroidsCreateProceduralAsteroidPatch.cs" />
+    <Compile Include="$(MSBuildThisFileDirectory)Patches\RingAsteroidsPatchBootstrap.cs" />
     <Compile Include="$(MSBuildThisFileDirectory)Plugin\Common.cs" />
     <Compile Include="$(MSBuildThisFileDirectory)Plugin\ICommonPlugin.cs" />
     <Compile Include="$(MSBuildThisFileDirectory)Runtime\OreFilterState.cs" />
