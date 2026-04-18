@@ -37,19 +37,32 @@ namespace GlobalSignals.Shared.Patches
                 bool disableSaveLimit = GetBoolField(__instance, "_disableSaveLimit", "disableSaveLimit");
 
                 MaterialIndexEntry[] originalPool = BuildOriginalMaterialPool(voxelGeneratorVersion);
+
+                // ДИАГНОСТИКА: логируем версию и весь пул
+                if (OreFilterState.Log != null)
+                {
+                    string allMats = string.Join(", ", originalPool.Select(x => x.Name).ToArray());
+                    OreFilterState.Log.Info("[OreFilter] voxelGenVer=" + voxelGeneratorVersion
+                        + " poolSize=" + originalPool.Length
+                        + " mats=[" + allMats + "]");
+                }
+
                 MaterialIndexEntry[] filteredPool = FilterMaterialPool(originalPool);
 
                 if (filteredPool.Length == 0)
                     filteredPool = BuildFallbackMaterialPool(voxelGeneratorVersion);
 
                 if (filteredPool.Length == 0)
+                {
+                    if (OreFilterState.Log != null)
+                        OreFilterState.Log.Info("[OreFilter] WARNING: filteredPool is empty, using originalPool for " + name);
                     filteredPool = originalPool;
+                }
 
                 if (OreFilterState.VerboseLogging && OreFilterState.Log != null)
                 {
                     string before = string.Join(", ", originalPool.Select(x => x.Name).ToArray());
                     string after = string.Join(", ", filteredPool.Select(x => x.Name).ToArray());
-
                     OreFilterState.Log.Info("[OreFilter] " + name + " before=[" + before + "] after=[" + after + "]");
                 }
 
@@ -62,12 +75,8 @@ namespace GlobalSignals.Shared.Patches
                     generator);
 
                 byte[] bytes = asteroid.GetBytes();
-                OctreeStorage fixedStorage = RemapForbiddenMaterials(bytes);
-                if (fixedStorage == null)
-                    fixedStorage = asteroid;
 
-                byte[] fixedBytes = fixedStorage.GetBytes();
-                IMyStorage storage = MyAPIGateway.Session.VoxelMaps.CreateStorage(fixedBytes);
+                IMyStorage storage = MyAPIGateway.Session.VoxelMaps.CreateStorage(bytes);
 
                 Vector3D spawnPos = pos - new Vector3D(
                     storage.Size.X - 1,
@@ -87,103 +96,8 @@ namespace GlobalSignals.Shared.Patches
             {
                 if (OreFilterState.Log != null)
                     OreFilterState.Log.Error(ex, "[OreFilter] Failed for asteroid " + name + ", fallback to original method.");
-
                 return true;
             }
-        }
-
-        private static OctreeStorage RemapForbiddenMaterials(byte[] bytes)
-        {
-            // можно логировать подробнее, но для MVP достаточно оставить logAction null
-            OctreeStorage storage = OctreeStorage.ReadFrom(bytes, null, null);
-            if (storage == null)
-                return null;
-
-            MaterialIndexTable table = storage.MaterialIndexTable;
-            if (table == null || table.Materials == null)
-                return storage;
-
-            MaterialIndexEntry[] materials = table.Materials;
-
-            // Построить map: имя -> индексы
-            var nameToIndices = new Dictionary<string, List<int>>(StringComparer.OrdinalIgnoreCase);
-            for (int i = 0; i < materials.Length; i++)
-            {
-                string name = materials[i].Name;
-                if (string.IsNullOrEmpty(name))
-                    continue;
-
-                List<int> list;
-                if (!nameToIndices.TryGetValue(name, out list))
-                {
-                    list = new List<int>();
-                    nameToIndices[name] = list;
-                }
-                list.Add(i);
-            }
-
-            // Выбрать допустимый материал для замены
-            string replacementName = GetReplacementMaterialName(nameToIndices.Keys);
-
-            if (replacementName == null)
-                return storage; // нечем заменять, выходим
-
-            List<int> replacementIndices;
-            if (!nameToIndices.TryGetValue(replacementName, out replacementIndices) || replacementIndices.Count == 0)
-                return storage;
-
-            int replacementIndex = replacementIndices[0];
-
-            // Список запрещённых материалов (по имени)
-            var forbiddenNames = new List<string>();
-            forbiddenNames.AddRange(OreFilterState.Config.BlacklistedOres);
-
-            // Пройти по материалам и переписать запрещённые на replacement
-            for (int i = 0; i < materials.Length; i++)
-            {
-                string name = materials[i].Name;
-                if (string.IsNullOrEmpty(name))
-                    continue;
-
-                if (forbiddenNames.Contains(name, StringComparer.OrdinalIgnoreCase))
-                {
-                    // Здесь есть две стратегии:
-                    // 1) сделать эту запись точной копией replacement
-                    materials[i].Index = materials[replacementIndex].Index;
-                    materials[i].Name = materials[replacementIndex].Name;
-
-                    // 2) или вообще занулить/объединить — но 1) проще и безопаснее
-                }
-            }
-
-            table.Materials = materials;
-            storage.MaterialIndexTable = table;
-
-            return storage;
-        }
-
-        private static string GetReplacementMaterialName(IEnumerable<string> availableNames)
-        {
-            // Простая стратегия: взять первый "камень" из списка конфигурации или по названию
-            // Например:
-            var preferred = new[] { "Stone_01", "Stone_02", "Stone_03", "Stone", "SmallMoonRocks" };
-            foreach (string p in preferred)
-            {
-                foreach (string name in availableNames)
-                {
-                    if (string.Equals(name, p, StringComparison.OrdinalIgnoreCase))
-                        return name;
-                }
-            }
-
-            // Если ничего не подошло, просто взять любой не запрещённый
-            foreach (string name in availableNames)
-            {
-                if (!OreFilterState.IsBlacklisted(name))
-                    return name;
-            }
-
-            return null;
         }
 
         private static MaterialIndexEntry[] BuildOriginalMaterialPool(int voxelGeneratorVersion)
@@ -192,11 +106,7 @@ namespace GlobalSignals.Shared.Patches
                 .GetVoxelMaterialDefinitions()
                 .Where(d => d.SpawnsInAsteroids)
                 .Where(d => d.MinVersion <= voxelGeneratorVersion && d.MaxVersion >= voxelGeneratorVersion)
-                .Select(d => new MaterialIndexEntry
-                {
-                    Index = d.Index,
-                    Name = d.Id.SubtypeName
-                })
+                .Select(d => new MaterialIndexEntry { Index = d.Index, Name = d.Id.SubtypeName })
                 .ToArray();
         }
 
@@ -218,22 +128,32 @@ namespace GlobalSignals.Shared.Patches
                 .Where(d => d.SpawnsInAsteroids)
                 .Where(d => d.MinVersion <= voxelGeneratorVersion && d.MaxVersion >= voxelGeneratorVersion)
                 .Where(d => fallbacks.Contains(d.Id.SubtypeName, StringComparer.OrdinalIgnoreCase))
-                .Select(d => new MaterialIndexEntry
-                {
-                    Index = d.Index,
-                    Name = d.Id.SubtypeName
-                })
+                .Select(d => new MaterialIndexEntry { Index = d.Index, Name = d.Id.SubtypeName })
                 .ToArray();
         }
 
         private static int GetIntField(object instance, params string[] names)
         {
-            int i;
-            for (i = 0; i < names.Length; i++)
+            for (int i = 0; i < names.Length; i++)
             {
                 var field = AccessTools.Field(instance.GetType(), names[i]);
                 if (field != null && field.FieldType == typeof(int))
                     return (int)field.GetValue(instance);
+            }
+
+            // Поле не найдено — логируем все доступные поля для диагностики
+            if (OreFilterState.Log != null)
+            {
+                string tried = string.Join(", ", names);
+                OreFilterState.Log.Info("[OreFilter] WARNING: int field not found on "
+                    + instance.GetType().FullName + ", tried: " + tried);
+
+                var allFields = instance.GetType().GetFields(
+                    System.Reflection.BindingFlags.Instance |
+                    System.Reflection.BindingFlags.NonPublic |
+                    System.Reflection.BindingFlags.Public);
+                string fieldList = string.Join(", ", allFields.Select(f => f.FieldType.Name + " " + f.Name).ToArray());
+                OreFilterState.Log.Info("[OreFilter] Available fields on " + instance.GetType().Name + ": " + fieldList);
             }
 
             if (MyAPIGateway.Session != null && MyAPIGateway.Session.SessionSettings != null)
@@ -244,14 +164,12 @@ namespace GlobalSignals.Shared.Patches
 
         private static bool GetBoolField(object instance, params string[] names)
         {
-            int i;
-            for (i = 0; i < names.Length; i++)
+            for (int i = 0; i < names.Length; i++)
             {
                 var field = AccessTools.Field(instance.GetType(), names[i]);
                 if (field != null && field.FieldType == typeof(bool))
                     return (bool)field.GetValue(instance);
             }
-
             return false;
         }
     }
