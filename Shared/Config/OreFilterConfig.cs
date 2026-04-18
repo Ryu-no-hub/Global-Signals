@@ -53,11 +53,11 @@ namespace GlobalSignals.Shared.Config
 
             StoneFallbacks = new List<string>
             {
-                "Stone01",
-                "Stone02",
-                "Stone03",
-                "Stone04",
-                "Stone05"
+                "Stone_01",
+                "Stone_02",
+                "Stone_03",
+                "Stone_04",
+                "Stone_05"
             };
         }
     }
