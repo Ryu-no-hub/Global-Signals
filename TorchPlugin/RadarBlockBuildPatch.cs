@@ -1,63 +1,38 @@
 ﻿using HarmonyLib;
 using Sandbox.Game.Entities;
 using Sandbox.Game.Entities.Cube;
+using VRage.Game;
 
 namespace TorchPlugin
 {
-    //[HarmonyPatch(typeof(MySlimBlock), "IncreaseMountLevel")]
-    //public static class RadarBlockBuildPatch
-    //{
-    //    static void Postfix(MySlimBlock __instance)
-    //    {
-    //        var fat = __instance.FatBlock as MyFunctionalBlock;
-    //        if (fat == null || fat.BlockDefinition.Id.SubtypeName != "LG_D2A_R")
-    //            return;
-
-    //        fat.IsWorkingChanged -= Plugin.RadarWorkingChanged;
-    //        fat.IsWorkingChanged += Plugin.RadarWorkingChanged;
-
-    //        fat.OnClose -= Plugin.RadarBlockClosed;
-    //        fat.OnClose += Plugin.RadarBlockClosed;
-
-    //        Plugin.RadarWorkingChanged(fat);
-    //        Plugin.Instance?.Log.Info("RadarBlockBuildPatch: new radar registered");
-    //    }
-    //}
-
-    //[HarmonyPatch(typeof(MyCubeGrid), "OnBlockAdded")]
-    //public static class RadarBlockAddedPatch
-    //{
-    //    static void Postfix(MyCubeGrid __instance, MySlimBlock block)
-    //    {
-    //        var fat = block.FatBlock as MyFunctionalBlock;
-    //        if (fat == null || fat.BlockDefinition.Id.SubtypeName != "LG_D2A_R")
-    //            return;
-
-    //        Plugin.Instance?.Log.Info("RadarBlockAddedPatch: Postfix called");
-
-    //        fat.IsWorkingChanged -= Plugin.RadarWorkingChanged;
-    //        fat.IsWorkingChanged += Plugin.RadarWorkingChanged;
-
-    //        fat.OnClose -= Plugin.RadarBlockClosed;
-    //        fat.OnClose += Plugin.RadarBlockClosed;
-
-    //        Plugin.RadarWorkingChanged(fat);
-    //        Plugin.Instance?.Log.Info("RadarBlockAddedPatch: new radar registered");
-    //    }
-    //}
-
-
-    [HarmonyPatch(typeof(MyCubeBlock), "ChangeOwner")]
-    public static class RadarBlockOwnerPatch
+    [HarmonyPatch(typeof(MyCubeGrid), "AddBlock", new[] { typeof(MyObjectBuilder_CubeBlock), typeof(bool) })]
+    public static class RadarBlockBuildPatch
     {
-        static void Postfix(MyCubeBlock __instance)
+        static void Postfix(MyCubeGrid __instance, MyObjectBuilder_CubeBlock objectBuilder)
         {
-            var func = __instance as MyFunctionalBlock;
-            if (func == null || func.BlockDefinition.Id.SubtypeName != "LG_D2A_R")
+            if (__instance == null || objectBuilder == null)
                 return;
 
-            // просто пересчитать принадлежность радара
+            var slim = __instance.GetCubeBlock(objectBuilder.Min);
+            var func = slim?.FatBlock as MyFunctionalBlock;
+            if (func == null)
+                return;
+
+            if (func.BlockDefinition?.Id.SubtypeName != "LG_D2A_R")
+                return;
+
+            Plugin.RegisterRadar(func);
+
+            func.IsWorkingChanged -= Plugin.RadarWorkingChanged;
+            func.IsWorkingChanged += Plugin.RadarWorkingChanged;
+
+            func.OnClose -= Plugin.RadarBlockClosed;
+            func.OnClose += Plugin.RadarBlockClosed;
+
             Plugin.RadarWorkingChanged(func);
+
+            Plugin.Instance?.Log.Info(
+                $"RadarBlockBuildPatch: registered radar EntityId={func.EntityId}, OwnerId={func.OwnerId}, IsWorking={func.IsWorking}");
         }
     }
 }

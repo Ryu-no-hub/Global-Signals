@@ -8,11 +8,8 @@ using System.Text;
 using System.Threading;
 using System.Timers;
 using System.Windows.Controls;
-using GlobalSignals.Shared.Patches;
-using GlobalSignals.Shared.Runtime;
 using HarmonyLib;
 using Newtonsoft.Json;
-using NLog;
 using Sandbox.Common.ObjectBuilders;
 using Sandbox.Game;
 using Sandbox.Game.Entities;
@@ -87,12 +84,6 @@ namespace TorchPlugin
 
         private static readonly Dictionary<MyDefinitionId, double> WeaponDps = new Dictionary<MyDefinitionId, double>(MyDefinitionId.Comparer);
 
-        // Asteroid Filter
-        private Harmony _harmony;
-        private System.Timers.Timer _patchTimer;
-        private bool _patchApplied;
-        private int _patchAttempts;
-        private const string HarmonyId = "globalsignals.orefilter.ringasteroids";
 
         // ReSharper disable once UnusedMember.Local
         private readonly Commands commands = new Commands();
@@ -101,16 +92,6 @@ namespace TorchPlugin
         public override void Init(ITorchBase torch)
         {
             base.Init(torch);
-
-            // Asteroid Filter
-            string asteroidOresConfigPath = Path.Combine(StoragePath ?? ".", "OreFilterConfig.xml");
-
-            OreFilterState.Initialize(Log, asteroidOresConfigPath);
-            OreFilterState.Load();
-
-            _harmony = new Harmony(HarmonyId);
-            StartPatchRetryTimer();
-            //
 
             WeaponDps.Clear();
 #if DEBUG
@@ -196,15 +177,6 @@ namespace TorchPlugin
 
             initialized = true;
         }
-        private void StartPatchRetryTimer()
-        {
-            _patchTimer = new System.Timers.Timer(5000);
-            _patchTimer.AutoReset = true;
-            _patchTimer.Elapsed += OnPatchTimerElapsed;
-            _patchTimer.Start();
-
-            Log.Info("[OreFilter] Delayed patch timer started.");
-        }
 
         public static void RegisterRadar(MyFunctionalBlock block)
         {
@@ -218,40 +190,9 @@ namespace TorchPlugin
                 IdentityRadars[ownerId] = list;
             }
 
+            //Instance?.Log.Info($"RegisterRadar: owner={block.OwnerId}, entity={block.EntityId}, working={block.IsWorking}");
             if (!list.Contains(block))
                 list.Add(block);
-        }
-        private void OnPatchTimerElapsed(object sender, ElapsedEventArgs e)
-        {
-            if (_patchApplied)
-                return;
-
-            _patchAttempts++;
-
-            bool success = RingAsteroidsPatchBootstrap.TryPatch(
-                _harmony,
-                delegate (string msg) { Log.Info(msg); },
-                delegate (string msg) { Log.Info(msg); },
-                delegate (Exception ex, string msg) { Log.Error(ex, msg); });
-
-            if (success)
-            {
-                _patchApplied = true;
-
-                if (_patchTimer != null)
-                {
-                    _patchTimer.Stop();
-                    _patchTimer.Dispose();
-                    _patchTimer = null;
-                }
-
-                Log.Info("[OreFilter] Patch applied after attempt #" + _patchAttempts);
-            }
-            else
-            {
-                if (_patchAttempts % 6 == 0)
-                    Log.Info("[OreFilter] Waiting for mod load. Attempts: " + _patchAttempts);
-            }
         }
 
         public static void UnregisterRadar(MyFunctionalBlock block)
@@ -281,6 +222,9 @@ namespace TorchPlugin
                 if (grid.IsPreview || grid.Physics == null || grid.Closed || grid.MarkedForClose)
                     continue;
 
+                grid.OnBlockOwnershipChanged -= GridOwnershipChanged;
+                grid.OnBlockOwnershipChanged += GridOwnershipChanged;
+
                 var fatBlocks = grid.GetFatBlocks();
                 foreach (var fb in fatBlocks)
                 {
@@ -302,7 +246,25 @@ namespace TorchPlugin
                 }
             }
         }
+        public static void GridOwnershipChanged(MyCubeGrid grid)
+        {
+            if (grid == null || grid.Closed || grid.MarkedForClose)
+                return;
 
+            //Instance?.Log.Info($"GridOwnershipChanged: {grid.DisplayName}");
+
+            foreach (var fb in grid.GetFatBlocks())
+            {
+                var func = fb as MyFunctionalBlock;
+                if (func == null)
+                    continue;
+
+                if (func.BlockDefinition.Id.SubtypeName != "LG_D2A_R")
+                    continue;
+
+                RadarWorkingChanged(func);
+            }
+        }
 
         private void SessionStateChanged(ITorchSession session, TorchSessionState newstate)
         {
@@ -341,13 +303,11 @@ namespace TorchPlugin
             if (func == null || func.BlockDefinition.Id.SubtypeName != "LG_D2A_R")
                 return;
 
-            Instance?.Log.Info("RadarBlockClosed");
-            // при закрытии просто пересчитать — он вычистится из словаря
+            //Instance?.Log.Info("RadarBlockClosed");
             RadarWorkingChanged(func);
         }
 
 
-        // RadarWorkingChanged – как ты показал выше (с логами, без жёсткого удаления по !IsWorking)
         public static void RadarWorkingChanged(IMyCubeBlock block)
         {
             var func = block as MyFunctionalBlock;
@@ -366,9 +326,8 @@ namespace TorchPlugin
                     IdentityRadars.Remove(kv.Key);
             }
 
-            Instance?.Log.Info(
-                $"RadarWorkingChanged: Closed={func.Closed}, MarkedForClose={func.MarkedForClose}, " +
-                $"OwnerId={ownerId}, IsWorking={func.IsWorking}");
+            //Instance?.Log.Info($"RadarWorkingChanged: Closed={func.Closed}, MarkedForClose={func.MarkedForClose}, " +
+            //    $"OwnerId={ownerId}, IsWorking={func.IsWorking}");
 
             if (func.Closed || func.MarkedForClose || ownerId <= 0)
                 return;
@@ -382,9 +341,8 @@ namespace TorchPlugin
             if (!ownerList.Contains(func))
                 ownerList.Add(func);
 
-            Instance?.Log.Info(
-                $"Radar update: Owner={ownerId}, total owners={IdentityRadars.Count}, " +
-                $"radars for owner={ownerList.Count}");
+            //Instance?.Log.Info($"Radar update: Owner={ownerId}, total owners={IdentityRadars.Count}, " +
+            //    $"radars for owner={ownerList.Count}");
         }
 
 
@@ -400,23 +358,6 @@ namespace TorchPlugin
                 sessionManager = null;
 
                 Log.Debug("Disposed");
-            }
-
-            try
-            {
-                if (_patchTimer != null)
-                {
-                    _patchTimer.Stop();
-                    _patchTimer.Dispose();
-                    _patchTimer = null;
-                }
-
-                if (_harmony != null)
-                    _harmony.UnpatchAll(HarmonyId);
-            }
-            catch (Exception ex)
-            {
-                Log.Error(ex, "[OreFilter] Failed during dispose.");
             }
 
             Instance = null;
@@ -1008,6 +949,7 @@ namespace TorchPlugin
             if (!IdentityRadars.TryGetValue(identityId, out var list) || list == null || list.Count == 0)
                 return false;
 
+            //Instance?.Log.Info($"HasActiveRadar: owner={identityId}, count={list.Count}");
             bool hasActive = false;
 
             for (int i = list.Count - 1; i >= 0; i--)
