@@ -1074,40 +1074,57 @@ namespace TorchPlugin
         // Возвращает true, если targetPlayerId должен видеть сигнал от ownerBeacon
         private bool ShouldShare(IMyBeacon ownerBeacon, long targetPlayerId)
         {
-            var settings = GetRadarShareSettings(ownerBeacon);
-            if (settings == null)
-            {
-                Log.Info($"ShouldShare: settings == null for beacon {ownerBeacon?.EntityId}, GameLogic={ownerBeacon?.GameLogic?.GetType()?.FullName}");
+            var gameLogic = ownerBeacon?.GameLogic;
+            if (gameLogic == null) return false;
+
+            var logicType = gameLogic.GetType();
+            if (logicType.FullName != "TerritoryBeaconBlock.RadarLogic")
                 return false;
-            } // мод не установлен / блок не инициализирован
 
-            switch (settings.ShareMode)
+            var shareModeProp = logicType.GetProperty("ShareMode");
+            if (shareModeProp == null) return false;
+            int shareMode = (int)shareModeProp.GetValue(gameLogic);
+
+            long radarOwnerId = ownerBeacon.OwnerId;
+
+            switch (shareMode)
             {
-                case GlobalRadarShareMode.OnlyMe:
-                    var ownerId = ownerBeacon.OwnerId;
-                    return targetPlayerId == ownerId;
+                case 0: // OnlyMe
+                    return targetPlayerId == radarOwnerId;
 
-                case GlobalRadarShareMode.MyFaction:
-                    if (targetPlayerId == ownerBeacon.OwnerId) return true;
-                    var ownerFaction = MyAPIGateway.Session.Factions.TryGetPlayerFaction(ownerBeacon.OwnerId);
+                case 1: // MyFaction
+                    if (targetPlayerId == radarOwnerId) return true;
+                    var ownerFaction = MyAPIGateway.Session.Factions.TryGetPlayerFaction(radarOwnerId);
                     var targetFaction = MyAPIGateway.Session.Factions.TryGetPlayerFaction(targetPlayerId);
-                    return ownerFaction != null && targetFaction != null && ownerFaction.FactionId == targetFaction.FactionId;
+                    return ownerFaction != null && targetFaction != null
+                        && ownerFaction.FactionId == targetFaction.FactionId;
 
-                case GlobalRadarShareMode.Everyone:
+                case 2: // Everyone
                     return true;
 
-                case GlobalRadarShareMode.Factions:
-                    var tf = MyAPIGateway.Session.Factions
-                        .TryGetPlayerFaction(targetPlayerId);
-                    return tf != null && settings.SharedFactionIds.Contains(tf.FactionId);
+                case 3: // Factions
+                    {
+                        var tf = MyAPIGateway.Session.Factions.TryGetPlayerFaction(targetPlayerId);
+                        if (tf == null) return false;
+                        var prop = logicType.GetProperty("SharedFactionIds");
+                        if (prop == null) return false;
+                        var set = prop.GetValue(gameLogic) as IEnumerable<long>;
+                        return set != null && set.Contains(tf.FactionId);
+                    }
 
-                case GlobalRadarShareMode.Players:
-                    return settings.SharedPlayerIds.Contains(targetPlayerId);
+                case 4: // Players
+                    {
+                        var prop = logicType.GetProperty("SharedPlayerIds");
+                        if (prop == null) return false;
+                        var set = prop.GetValue(gameLogic) as IEnumerable<long>;
+                        return set != null && set.Contains(targetPlayerId);
+                    }
 
                 default:
                     return false;
             }
         }
+
         /// <summary>
         /// 
         /// </summary>
@@ -1115,7 +1132,6 @@ namespace TorchPlugin
         /// <param name="name"></param>
         /// <param name="description"></param>
         /// <returns></returns>
-
         private MyGps CreateGps(Vector3D position, string name, string description)
         {
             MyGps gps = new MyGps
