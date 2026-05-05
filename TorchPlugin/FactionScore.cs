@@ -1050,7 +1050,5 @@ namespace TorchPlugin
 
             return storageName.Substring(0, dashIndex) ;
         }
-
-
     }
 }

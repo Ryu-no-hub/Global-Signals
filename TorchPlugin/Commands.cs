@@ -77,7 +77,7 @@ namespace TorchPlugin
 
         private void RespondWithFactionScores(string scores_result)
         {
-            Respond($"{Plugin.PluginName}: \nScores: {scores_result}");
+            Respond($"{Plugin.PluginName}: \nScores: \n{scores_result}");
         }
 
         //private void RespondWithFactionsList(string factions_list)

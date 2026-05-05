@@ -1,20 +1,29 @@
-REM This file is ran in a pre-build event when data from "Directory.Build.props" is required
-REM It assumes "Directory.Build.props" and "verify_props" are both in the solution directory
-
 @echo off
 setlocal
 
-set SOLUTION=%~dp0
+set "SOLUTION=%~dp0"
+set "HAS_ERROR="
 
-REM Loop through each parameter provided
-for %%a in (%*) do (
-    
-    REM Detect if the parameter is not a valid path
-    if not exist "%%~a" (
+:nextArg
+if "%~1"=="" goto done
 
-        REM Raise an error for each bad path - this will prevent the build from completing.
-        echo ERROR: Invalid path "%%~a" in "%SOLUTION%Directory.Build.Props" 1>&2
-    )
+if not exist "%~1" (
+    echo ERROR: Invalid path "%~1" in "%SOLUTION%Directory.Build.props" 1>&2
+    set "HAS_ERROR=1"
 )
 
+shift
+goto nextArg
+
+:done
+if defined HAS_ERROR (
+    echo.
+    echo Press any key to close...
+    pause >nul
+    exit /b 1
+)
+
+echo.
+echo Done. Press any key to close...
+pause >nul
 exit /b 0

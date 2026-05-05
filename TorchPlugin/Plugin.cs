@@ -6,7 +6,6 @@ using System.IO;
 using System.Linq;
 using System.Text;
 using System.Threading;
-using System.Timers;
 using System.Windows.Controls;
 using HarmonyLib;
 using Newtonsoft.Json;
@@ -18,7 +17,6 @@ using Sandbox.Game.Multiplayer;
 using Sandbox.Game.Screens.Helpers;
 using Sandbox.Game.World;
 using Sandbox.ModAPI;
-//using Sandbox.ModAPI.Ingame;
 using Shared.Config;
 using Shared.Logging;
 using Shared.Patches;
@@ -35,6 +33,7 @@ using VRage.Game.ModAPI;
 using VRage.ModAPI;
 using VRage.Utils;
 using VRageMath;
+using TerritoryBeaconShared;
 
 namespace TorchPlugin
 {
@@ -190,7 +189,7 @@ namespace TorchPlugin
                 IdentityRadars[ownerId] = list;
             }
 
-            //Instance?.Log.Info($"RegisterRadar: owner={block.OwnerId}, entity={block.EntityId}, working={block.IsWorking}");
+            Instance?.Log.Info($"RegisterRadar: owner={block.OwnerId}, entity={block.EntityId}, working={block.IsWorking}");
             if (!list.Contains(block))
                 list.Add(block);
         }
@@ -303,7 +302,7 @@ namespace TorchPlugin
             if (func == null || func.BlockDefinition.Id.SubtypeName != "LG_D2A_R")
                 return;
 
-            //Instance?.Log.Info("RadarBlockClosed");
+            Instance?.Log.Info("RadarBlockClosed");
             RadarWorkingChanged(func);
         }
 
@@ -326,8 +325,8 @@ namespace TorchPlugin
                     IdentityRadars.Remove(kv.Key);
             }
 
-            //Instance?.Log.Info($"RadarWorkingChanged: Closed={func.Closed}, MarkedForClose={func.MarkedForClose}, " +
-            //    $"OwnerId={ownerId}, IsWorking={func.IsWorking}");
+            Instance?.Log.Info($"RadarWorkingChanged: Closed={func.Closed}, MarkedForClose={func.MarkedForClose}, " +
+                $"OwnerId={ownerId}, IsWorking={func.IsWorking}");
 
             if (func.Closed || func.MarkedForClose || ownerId <= 0)
                 return;
@@ -341,8 +340,8 @@ namespace TorchPlugin
             if (!ownerList.Contains(func))
                 ownerList.Add(func);
 
-            //Instance?.Log.Info($"Radar update: Owner={ownerId}, total owners={IdentityRadars.Count}, " +
-            //    $"radars for owner={ownerList.Count}");
+            Instance?.Log.Info($"Radar update: Owner={ownerId}, total owners={IdentityRadars.Count}, " +
+                $"radars for owner={ownerList.Count}");
         }
 
 
@@ -825,18 +824,13 @@ namespace TorchPlugin
             {
                 foreach (var group in MyCubeGridGroups.Static.Physical.Groups)
                 {
-                    foreach (var groupNode in group.Nodes)
+                    foreach (var node in group.Nodes)
                     {
-                        MyCubeGrid cubeGrid = groupNode.NodeData;
+                        MyCubeGrid cubeGrid = node.NodeData;
 
-                        if (cubeGrid.IsNpcSpawnedGrid)
-                            continue;
-
-                        if (cubeGrid.Physics == null)
-                            continue;
-
-                        if (cubeGrid.NaturalGravity.Length() > 0)
-                            continue;
+                        if (cubeGrid.IsNpcSpawnedGrid) continue;
+                        if (cubeGrid.Physics == null) continue;
+                        if (cubeGrid.NaturalGravity.Length() > 0) continue;
 
                         gridsList.Add(cubeGrid);
                     }
@@ -844,29 +838,146 @@ namespace TorchPlugin
             }
             else
             {
-
                 foreach (var group in MyCubeGridGroups.Static.Mechanical.Groups)
                 {
-                    foreach (var groupNodes in group.Nodes)
+                    foreach (var node in group.Nodes)
                     {
-                        MyCubeGrid cubeGrid = groupNodes.NodeData;
+                        MyCubeGrid cubeGrid = node.NodeData;
 
-                        if (cubeGrid.IsNpcSpawnedGrid)
-                            continue;
-
-                        if (cubeGrid.Physics == null)
-                            continue;
-
-                        if (cubeGrid.NaturalGravity.Length() > 0)
-                            continue;
+                        if (cubeGrid.IsNpcSpawnedGrid) continue;
+                        if (cubeGrid.Physics == null) continue;
+                        if (cubeGrid.NaturalGravity.Length() > 0) continue;
 
                         gridsList.Add(cubeGrid);
                     }
                 }
             }
+
             gridsDetectable = gridsList;
             lastFindTime = DateTime.Now;
         }
+
+        public void ShowGrids()
+        {
+            RemoveGpsFromAllPlayers();
+
+            MyGpsCollection gpsCollection = (MyGpsCollection)MyAPIGateway.Session?.GPS;
+            if (gpsCollection == null)
+                return;
+
+            foreach (MyPlayer player in MySession.Static.Players.GetOnlinePlayers())
+            {
+                long identityId = player.Identity.IdentityId;
+
+                // Собираем радары, которые разрешают этого игрока
+                var allowingRadars = new List<IMyBeacon>();
+
+                foreach (var kv in IdentityRadars)
+                {
+                    if (kv.Value == null) continue;
+                    foreach (var radarBlock in kv.Value)
+                    {
+                        if (radarBlock == null || radarBlock.Closed || radarBlock.MarkedForClose) continue;
+                        var radarBeacon = radarBlock as IMyBeacon;
+                        if (radarBeacon == null || !radarBeacon.IsWorking) continue;
+                        var hud = radarBeacon.HudText ?? string.Empty;
+                        if (hud.IndexOf("arming", StringComparison.OrdinalIgnoreCase) >= 0) continue;
+
+                        if (ShouldShare(radarBeacon, identityId))
+                            allowingRadars.Add(radarBeacon);
+                    }
+                }
+
+                if (allowingRadars.Count == 0)
+                    continue;
+
+                // Для каждого радара — identity владельца + его фракция
+                // Грид скрыт только если ВСЕ разрешающие радары принадлежат той же фракции, что и грид
+                foreach (var grid in gridsDetectable)
+                {
+                    // Проверяем: есть ли хоть один радар, чья фракция НЕ совпадает с фракцией грида
+                    bool shouldShow = false;
+                    foreach (var radarBeacon in allowingRadars)
+                    {
+                        long radarOwnerId = radarBeacon.OwnerId;
+                        var radarFaction = MySession.Static.Factions?.TryGetPlayerFaction(radarOwnerId);
+
+                        bool gridBelongsToRadarOwner = grid.BigOwners.Any(gridOwner =>
+                        {
+                            if (gridOwner == radarOwnerId) return true;
+                            if (radarFaction == null) return false;
+                            return radarFaction.Members.ContainsKey(gridOwner);
+                        });
+
+                        if (!gridBelongsToRadarOwner)
+                        {
+                            shouldShow = true;
+                            break;
+                        }
+                    }
+
+                    if (!shouldShow)
+                        continue;
+
+                    Vector3D position = grid.PositionComp.WorldAABB.Center;
+                    MyGps gps = CreateGps(position, grid.DisplayName, GpsDescriptionGlobalSignals);
+                    MyGps gpsRef = gps;
+
+                    long entity = 0L;
+                    gpsCollection.SendAddGpsRequest(identityId, ref gpsRef, entity, false);
+                }
+            }
+        }
+
+        //public void ShowGrids()
+        //{
+        //    RemoveGpsFromAllPlayers();
+
+        //    MyGpsCollection gpsCollection = (MyGpsCollection)MyAPIGateway.Session?.GPS;
+        //    if (gpsCollection == null)
+        //        return;
+
+        //    // Проверяем: есть ли хоть один активный глобальный радар в мире
+        //    // Если ни одного нет — никому ничего не показываем
+        //    bool anyActiveRadar = IdentityRadars.Values
+        //        .Any(list => list != null && list.Any(b =>
+        //        {
+        //            if (b == null || b.Closed || b.MarkedForClose) return false;
+        //            var rb = b as IMyBeacon;
+        //            if (rb == null || !rb.IsWorking) return false;
+        //            var hud = rb.HudText ?? string.Empty;
+        //            return hud.IndexOf("arming", StringComparison.OrdinalIgnoreCase) < 0;
+        //        }));
+
+        //    if (!anyActiveRadar)
+        //        return;
+
+        //    foreach (MyPlayer player in MySession.Static.Players.GetOnlinePlayers())
+        //    {
+        //        long identityId = player.Identity.IdentityId;
+
+        //        // Собираем "свои" identity: сам игрок + его фракция
+        //        var ownIdentities = new HashSet<long> { identityId };
+        //        var faction = MySession.Static.Factions?.TryGetPlayerFaction(identityId);
+        //        if (faction != null)
+        //            foreach (var memberId in faction.Members.Keys)
+        //                ownIdentities.Add(memberId);
+
+        //        foreach (var grid in gridsDetectable)
+        //        {
+        //            // Не показываем свои и фракционные гриды
+        //            if (grid.BigOwners.Any(o => ownIdentities.Contains(o)))
+        //                continue;
+
+        //            Vector3D position = grid.PositionComp.WorldAABB.Center;
+        //            MyGps gps = CreateGps(position, grid.DisplayName, GpsDescriptionGlobalSignals);
+        //            MyGps gpsRef = gps;
+
+        //            long entity = 0L;
+        //            gpsCollection.SendAddGpsRequest(identityId, ref gpsRef, entity, false);
+        //        }
+        //    }
+        //}
 
         public void RemoveGpsFromAllPlayers()
         {
@@ -896,34 +1007,6 @@ namespace TorchPlugin
             }
         }
 
-        //public void ShowGrids()
-        //{
-        //    RemoveGpsFromAllPlayers();
-
-        //    MyGpsCollection gpsCollection = (MyGpsCollection)MyAPIGateway.Session?.GPS;
-
-        //    if (gpsCollection == null)
-        //        return;
-
-        //    List<MyCubeGrid> gridsList = gridsDetectable;
-
-        //    //foreach (MyPlayer player in MySession.Static.Players.GetOnlinePlayers())
-        //    foreach (MyPlayer player in MySession.Static.Players.GetOnlinePlayers())
-        //    {
-        //        foreach (var grid in gridsList)
-        //        {
-        //            Vector3D position = grid.PositionComp.WorldAABB.Center;
-
-        //            //var description = ($"Detected by Global Radar");
-
-        //            MyGps gps = CreateGps(position, grid.DisplayName, GpsDescriptionGlobalSignals);
-        //            MyGps gpsRef = gps;
-
-        //            long entity = 0L;
-        //            gpsCollection.SendAddGpsRequest(player.Identity.IdentityId, ref gpsRef, entity, false);
-        //        }
-        //    }
-        //}
         public static bool PlayerOrFactionHasActiveRadar(long identityId)
         {
             // 1) сначала проверяем личные радары игрока
@@ -980,38 +1063,58 @@ namespace TorchPlugin
             return hasActive;
         }
 
-
-        public void ShowGrids()
+        // SELECTING SIGNAL RECIPIENTS 
+        private static IRadarShareSettings GetRadarShareSettings(IMyBeacon beacon)
         {
-            RemoveGpsFromAllPlayers();
-
-            MyGpsCollection gpsCollection = (MyGpsCollection)MyAPIGateway.Session?.GPS;
-            if (gpsCollection == null)
-                return;
-
-            List<MyCubeGrid> gridsList = gridsDetectable;
-
-            foreach (MyPlayer player in MySession.Static.Players.GetOnlinePlayers())
-            {
-                long identityId = player.Identity.IdentityId;
-
-                if (!PlayerOrFactionHasActiveRadar(identityId))
-                    continue;
-
-                foreach (var grid in gridsList)
-                {
-                    Vector3D position = grid.PositionComp.WorldAABB.Center;
-
-                    MyGps gps = CreateGps(position, grid.DisplayName, GpsDescriptionGlobalSignals);
-                    MyGps gpsRef = gps;
-
-                    long entity = 0L;
-                    gpsCollection.SendAddGpsRequest(player.Identity.IdentityId, ref gpsRef, entity, false);
-                }
-            }
-
+            var settings = beacon?.GameLogic?.GetAs<IRadarShareSettings>();
+            return settings;
         }
 
+
+        // Возвращает true, если targetPlayerId должен видеть сигнал от ownerBeacon
+        private bool ShouldShare(IMyBeacon ownerBeacon, long targetPlayerId)
+        {
+            var settings = GetRadarShareSettings(ownerBeacon);
+            if (settings == null)
+            {
+                Log.Info($"ShouldShare: settings == null for beacon {ownerBeacon?.EntityId}, GameLogic={ownerBeacon?.GameLogic?.GetType()?.FullName}");
+                return false;
+            } // мод не установлен / блок не инициализирован
+
+            switch (settings.ShareMode)
+            {
+                case GlobalRadarShareMode.OnlyMe:
+                    var ownerId = ownerBeacon.OwnerId;
+                    return targetPlayerId == ownerId;
+
+                case GlobalRadarShareMode.MyFaction:
+                    if (targetPlayerId == ownerBeacon.OwnerId) return true;
+                    var ownerFaction = MyAPIGateway.Session.Factions.TryGetPlayerFaction(ownerBeacon.OwnerId);
+                    var targetFaction = MyAPIGateway.Session.Factions.TryGetPlayerFaction(targetPlayerId);
+                    return ownerFaction != null && targetFaction != null && ownerFaction.FactionId == targetFaction.FactionId;
+
+                case GlobalRadarShareMode.Everyone:
+                    return true;
+
+                case GlobalRadarShareMode.Factions:
+                    var tf = MyAPIGateway.Session.Factions
+                        .TryGetPlayerFaction(targetPlayerId);
+                    return tf != null && settings.SharedFactionIds.Contains(tf.FactionId);
+
+                case GlobalRadarShareMode.Players:
+                    return settings.SharedPlayerIds.Contains(targetPlayerId);
+
+                default:
+                    return false;
+            }
+        }
+        /// <summary>
+        /// 
+        /// </summary>
+        /// <param name="position"></param>
+        /// <param name="name"></param>
+        /// <param name="description"></param>
+        /// <returns></returns>
 
         private MyGps CreateGps(Vector3D position, string name, string description)
         {
@@ -1029,47 +1132,6 @@ namespace TorchPlugin
 
             return gps;
         }
-
-        //public void Clean()
-        //{
-        //    var gridsToRemove = new List<MyCubeGrid>();
-
-        //    foreach (var group in MyCubeGridGroups.Static.Physical.Groups)
-        //    {
-        //        foreach (var groupNode in group.Nodes)
-        //        {
-        //            MyCubeGrid cubeGrid = groupNode.NodeData;
-
-        //            if (cubeGrid.Physics == null)
-        //                continue;
-
-        //            bool hasOwnerPlate = false;
-        //            var blocks = cubeGrid.GetBlocks();
-        //            MyVisualScriptLogicProvider.SendChatMessage($"Checking grid {cubeGrid.DisplayName}");
-
-        //            foreach (var block in blocks)
-        //            {
-        //                if ((block.BlockDefinition.Id.SubtypeName == "OwnerSEPSE.Small") || (block.BlockDefinition.Id.SubtypeName == "OwnerSEPSE.Large"))
-        //                {
-        //                    hasOwnerPlate = true;
-        //                    MyVisualScriptLogicProvider.SendChatMessage($"Grid {cubeGrid.DisplayName} has ownerblock {block.BlockDefinition.DisplayNameText}");
-        //                    break; // no need to continue once found
-        //                }
-        //            }
-
-        //            if (!hasOwnerPlate)
-        //            {
-        //                // Mark for removal instead of removing immediately
-        //                gridsToRemove.Add(cubeGrid);
-        //            }
-        //        }
-        //    }
-        //    foreach (var grid in gridsToRemove)
-        //    {
-        //        MyVisualScriptLogicProvider.SendChatMessage($"Deleted: {grid.DisplayName}");
-        //        MyAPIGateway.Entities.RemoveEntity(grid);
-        //    }
-        //}
     }
 }
 
