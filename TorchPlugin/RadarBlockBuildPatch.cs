@@ -10,6 +10,7 @@ namespace TorchPlugin
     {
         static void Postfix(MyCubeGrid __instance, MyObjectBuilder_CubeBlock objectBuilder)
         {
+            if (Plugin.Instance == null) return;
             if (__instance == null || objectBuilder == null)
                 return;
 
@@ -21,7 +22,6 @@ namespace TorchPlugin
             if (func.BlockDefinition?.Id.SubtypeName != "LG_D2A_R")
                 return;
 
-            //Plugin.RegisterRadar(func);
 
             func.IsWorkingChanged -= Plugin.RadarWorkingChanged;
             func.IsWorkingChanged += Plugin.RadarWorkingChanged;
