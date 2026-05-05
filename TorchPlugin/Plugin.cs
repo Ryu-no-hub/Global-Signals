@@ -33,7 +33,6 @@ using VRage.Game.ModAPI;
 using VRage.ModAPI;
 using VRage.Utils;
 using VRageMath;
-using TerritoryBeaconShared;
 
 namespace TorchPlugin
 {
@@ -1063,12 +1062,6 @@ namespace TorchPlugin
             return hasActive;
         }
 
-        // SELECTING SIGNAL RECIPIENTS 
-        private static IRadarShareSettings GetRadarShareSettings(IMyBeacon beacon)
-        {
-            var settings = beacon?.GameLogic?.GetAs<IRadarShareSettings>();
-            return settings;
-        }
 
 
         // Возвращает true, если targetPlayerId должен видеть сигнал от ownerBeacon

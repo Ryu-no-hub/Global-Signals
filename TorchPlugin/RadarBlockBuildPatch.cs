@@ -21,7 +21,7 @@ namespace TorchPlugin
             if (func.BlockDefinition?.Id.SubtypeName != "LG_D2A_R")
                 return;
 
-            Plugin.RegisterRadar(func);
+            //Plugin.RegisterRadar(func);
 
             func.IsWorkingChanged -= Plugin.RadarWorkingChanged;
             func.IsWorkingChanged += Plugin.RadarWorkingChanged;
