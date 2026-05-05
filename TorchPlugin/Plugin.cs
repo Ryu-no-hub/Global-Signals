@@ -178,6 +178,7 @@ namespace TorchPlugin
 
         public static void RegisterRadar(MyFunctionalBlock block)
         {
+            Instance?.Log.Info($"RegisterRadar start: owner={block.OwnerId}, entity={block.EntityId}, working={block.IsWorking}");
             long ownerId = block.OwnerId;
             if (ownerId <= 0)
                 return;
@@ -188,9 +189,10 @@ namespace TorchPlugin
                 IdentityRadars[ownerId] = list;
             }
 
-            Instance?.Log.Info($"RegisterRadar: owner={block.OwnerId}, entity={block.EntityId}, working={block.IsWorking}");
+            Instance?.Log.Info($"RegisterRadar mid");
             if (!list.Contains(block))
                 list.Add(block);
+            Instance?.Log.Info($"RegisterRadar end");
         }
 
         public static void UnregisterRadar(MyFunctionalBlock block)
