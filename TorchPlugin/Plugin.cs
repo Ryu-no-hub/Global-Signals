@@ -183,16 +183,19 @@ namespace TorchPlugin
             if (ownerId <= 0)
                 return;
 
-            if (!IdentityRadars.TryGetValue(ownerId, out var list))
+            lock (_radarLock)
             {
-                list = new List<MyFunctionalBlock>();
-                IdentityRadars[ownerId] = list;
-            }
+                if (!IdentityRadars.TryGetValue(ownerId, out var list))
+                {
+                    list = new List<MyFunctionalBlock>();
+                    IdentityRadars[ownerId] = list;
+                }
 
-            Instance?.Log.Info($"RegisterRadar mid");
-            if (!list.Contains(block))
-                list.Add(block);
-            Instance?.Log.Info($"RegisterRadar end");
+                Instance?.Log.Info($"RegisterRadar mid");
+                if (!list.Contains(block))
+                    list.Add(block);
+                Instance?.Log.Info($"RegisterRadar end");
+            }
         }
 
         public static void UnregisterRadar(MyFunctionalBlock block)
@@ -201,17 +204,23 @@ namespace TorchPlugin
             if (ownerId <= 0)
                 return;
 
-            if (!IdentityRadars.TryGetValue(ownerId, out var list))
-                return;
+            lock (_radarLock)
+            {
+                if (!IdentityRadars.TryGetValue(ownerId, out var list))
+                    return;
 
-            list.Remove(block);
-            if (list.Count == 0)
-                IdentityRadars.Remove(ownerId);
+                list.Remove(block);
+                if (list.Count == 0)
+                    IdentityRadars.Remove(ownerId);
+            }
         }
 
         public static void InitIdentityRadars()
         {
-            IdentityRadars.Clear();
+            lock (_radarLock)
+            {
+                IdentityRadars.Clear();
+            }
 
             var entities = new HashSet<IMyEntity>();
             MyAPIGateway.Entities.GetEntities(entities, e => e is MyCubeGrid);
@@ -307,7 +316,7 @@ namespace TorchPlugin
             RadarWorkingChanged(func);
         }
 
-
+        private static readonly object _radarLock = new object();
         public static void RadarWorkingChanged(IMyCubeBlock block)
         {
             var func = block as MyFunctionalBlock;
@@ -316,33 +325,36 @@ namespace TorchPlugin
 
             long ownerId = func.OwnerId;
 
-            foreach (var kv in IdentityRadars.ToList())
+            lock (_radarLock)
             {
-                var list = kv.Value;
-                if (list == null)
-                    continue;
+                foreach (var kv in IdentityRadars.ToList())
+                {
+                    var list = kv.Value;
+                    if (list == null)
+                        continue;
 
-                if (list.Remove(func) && list.Count == 0)
-                    IdentityRadars.Remove(kv.Key);
+                    if (list.Remove(func) && list.Count == 0)
+                        IdentityRadars.Remove(kv.Key);
+                }
+
+                Instance?.Log.Info($"RadarWorkingChanged: Closed={func.Closed}, MarkedForClose={func.MarkedForClose}, " +
+                    $"OwnerId={ownerId}, IsWorking={func.IsWorking}");
+
+                if (func.Closed || func.MarkedForClose || ownerId <= 0)
+                    return;
+
+                if (!IdentityRadars.TryGetValue(ownerId, out var ownerList))
+                {
+                    ownerList = new List<MyFunctionalBlock>();
+                    IdentityRadars[ownerId] = ownerList;
+                }
+
+                if (!ownerList.Contains(func))
+                    ownerList.Add(func);
+
+                Instance?.Log.Info($"Radar update: Owner={ownerId}, total owners={IdentityRadars.Count}, " +
+                    $"radars for owner={ownerList.Count}");
             }
-
-            Instance?.Log.Info($"RadarWorkingChanged: Closed={func.Closed}, MarkedForClose={func.MarkedForClose}, " +
-                $"OwnerId={ownerId}, IsWorking={func.IsWorking}");
-
-            if (func.Closed || func.MarkedForClose || ownerId <= 0)
-                return;
-
-            if (!IdentityRadars.TryGetValue(ownerId, out var ownerList))
-            {
-                ownerList = new List<MyFunctionalBlock>();
-                IdentityRadars[ownerId] = ownerList;
-            }
-
-            if (!ownerList.Contains(func))
-                ownerList.Add(func);
-
-            Instance?.Log.Info($"Radar update: Owner={ownerId}, total owners={IdentityRadars.Count}, " +
-                $"radars for owner={ownerList.Count}");
         }
 
 
@@ -872,20 +884,22 @@ namespace TorchPlugin
 
                 // Собираем радары, которые разрешают этого игрока
                 var allowingRadars = new List<IMyBeacon>();
-
-                foreach (var kv in IdentityRadars)
+                lock (_radarLock)
                 {
-                    if (kv.Value == null) continue;
-                    foreach (var radarBlock in kv.Value)
+                    foreach (var kv in IdentityRadars)
                     {
-                        if (radarBlock == null || radarBlock.Closed || radarBlock.MarkedForClose) continue;
-                        var radarBeacon = radarBlock as IMyBeacon;
-                        if (radarBeacon == null || !radarBeacon.IsWorking) continue;
-                        var hud = radarBeacon.HudText ?? string.Empty;
-                        if (hud.IndexOf("arming", StringComparison.OrdinalIgnoreCase) >= 0) continue;
+                        if (kv.Value == null) continue;
+                        foreach (var radarBlock in kv.Value)
+                        {
+                            if (radarBlock == null || radarBlock.Closed || radarBlock.MarkedForClose) continue;
+                            var radarBeacon = radarBlock as IMyBeacon;
+                            if (radarBeacon == null || !radarBeacon.IsWorking) continue;
+                            var hud = radarBeacon.HudText ?? string.Empty;
+                            if (hud.IndexOf("arming", StringComparison.OrdinalIgnoreCase) >= 0) continue;
 
-                        if (ShouldShare(radarBeacon, identityId))
-                            allowingRadars.Add(radarBeacon);
+                            if (ShouldShare(radarBeacon, identityId))
+                                allowingRadars.Add(radarBeacon);
+                        }
                     }
                 }
 
