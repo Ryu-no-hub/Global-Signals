@@ -826,7 +826,30 @@ namespace TorchPlugin
         }
 
 
+        private bool IsNPCOwned(IMyCubeGrid Grid)
+        {
+            if (Grid.BigOwners == null || Grid.BigOwners.Count == 0)
+            {
+                return false;
+            }
+            bool _isNPCOwned;
 
+            long owner = Grid.BigOwners[0]; // only check the first one, too edge case to check others 
+
+            IMyFaction faction = MyAPIGateway.Session.Factions.TryGetPlayerFaction(owner);
+
+            if (faction == null)
+            {
+                _isNPCOwned = false;
+            }
+            else
+            {
+                _isNPCOwned = !faction.AcceptHumans || faction.IsEveryoneNpc(); // HACK: IsEveryoneNpc() doesn't work reliably so AcceptHumans was also added
+            }
+            // MyAPIGateway.Utilities.ShowMessage("IsNPCOwned", _isNPCOwned.ToString());
+
+            return _isNPCOwned;
+        }
 
 
         public void FindGrids(bool connected)
@@ -842,6 +865,7 @@ namespace TorchPlugin
                         MyCubeGrid cubeGrid = node.NodeData;
 
                         if (cubeGrid.IsNpcSpawnedGrid) continue;
+                        if (IsNPCOwned(cubeGrid)) continue;
                         if (cubeGrid.Physics == null) continue;
                         if (cubeGrid.NaturalGravity.Length() > 0) continue;
 
@@ -858,6 +882,7 @@ namespace TorchPlugin
                         MyCubeGrid cubeGrid = node.NodeData;
 
                         if (cubeGrid.IsNpcSpawnedGrid) continue;
+                        if (IsNPCOwned(cubeGrid)) continue;
                         if (cubeGrid.Physics == null) continue;
                         if (cubeGrid.NaturalGravity.Length() > 0) continue;
 
