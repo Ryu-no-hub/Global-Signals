@@ -285,7 +285,7 @@ namespace TorchPlugin
 
                 case TorchSessionState.Loaded:
                     Log.Debug("Loaded");
-                    FactionScoreManager.CalculateCapturableVolume();
+                    FactionScoreManager.CalculateCapturableVolumes();
                     InitIdentityRadars();
 
                     break;
@@ -412,6 +412,7 @@ namespace TorchPlugin
                     {
                         FindGrids(Config.UseConnectedGrids);
                         ShowGrids();
+                        ShowRadarBeacons();
                         lastFindTime = DateTime.Now;
                         //Log.Info("Update signals");
                     }
@@ -826,29 +827,31 @@ namespace TorchPlugin
         }
 
 
-        private bool IsNPCOwned(IMyCubeGrid Grid)
+        private bool IsNPCOwned(IMyCubeGrid grid)
         {
-            if (Grid.BigOwners == null || Grid.BigOwners.Count == 0)
-            {
+            if (grid.BigOwners == null || grid.BigOwners.Count == 0)
                 return false;
-            }
-            bool _isNPCOwned;
 
-            long owner = Grid.BigOwners[0]; // only check the first one, too edge case to check others 
+            long owner = grid.BigOwners[0];
+            var faction = MyAPIGateway.Session.Factions.TryGetPlayerFaction(owner);
 
-            IMyFaction faction = MyAPIGateway.Session.Factions.TryGetPlayerFaction(owner);
-
-            if (faction == null)
+            if (faction != null)
             {
-                _isNPCOwned = false;
+                bool isNpc = !faction.AcceptHumans || faction.IsEveryoneNpc();
+                //Instance?.Log.Info($"IsNPCOwned faction: grid='{grid.DisplayName}', " +
+                //    $"faction='{faction.Name}', AcceptHumans={faction.AcceptHumans}, " +
+                //    $"IsEveryoneNpc={faction.IsEveryoneNpc()}, result={isNpc}");
+                return isNpc;
             }
-            else
-            {
-                _isNPCOwned = !faction.AcceptHumans || faction.IsEveryoneNpc(); // HACK: IsEveryoneNpc() doesn't work reliably so AcceptHumans was also added
-            }
-            // MyAPIGateway.Utilities.ShowMessage("IsNPCOwned", _isNPCOwned.ToString());
 
-            return _isNPCOwned;
+            var steamId = MySession.Static.Players.TryGetSteamId(owner);
+            var identity = MySession.Static.Players.TryGetIdentity(owner);
+            bool result = steamId == 0;
+            //Instance?.Log.Info($"IsNPCOwned steamId: grid='{grid.DisplayName}', " +
+            //    $"ownerId={owner}, identity='{identity?.DisplayName ?? "null"}', " +
+            //    $"steamId={steamId}, result={result}");
+
+            return result;
         }
 
 
@@ -869,6 +872,11 @@ namespace TorchPlugin
                         if (cubeGrid.Physics == null) continue;
                         if (cubeGrid.NaturalGravity.Length() > 0) continue;
 
+                        Log.Info($"Detectable grid: '{cubeGrid.DisplayName}', " +
+    $"NpcSpawned={cubeGrid.IsNpcSpawnedGrid}, " +
+    $"BigOwners={cubeGrid.BigOwners?.Count ?? 0}, " +
+    $"IsNPCOwned={IsNPCOwned(cubeGrid)}");
+
                         gridsList.Add(cubeGrid);
                     }
                 }
@@ -885,6 +893,11 @@ namespace TorchPlugin
                         if (IsNPCOwned(cubeGrid)) continue;
                         if (cubeGrid.Physics == null) continue;
                         if (cubeGrid.NaturalGravity.Length() > 0) continue;
+
+                        Log.Info($"Detectable grid: '{cubeGrid.DisplayName}', " +
+    $"NpcSpawned={cubeGrid.IsNpcSpawnedGrid}, " +
+    $"BigOwners={cubeGrid.BigOwners?.Count ?? 0}, " +
+    $"IsNPCOwned={IsNPCOwned(cubeGrid)}");
 
                         gridsList.Add(cubeGrid);
                     }
@@ -1157,6 +1170,140 @@ namespace TorchPlugin
                 default:
                     return false;
             }
+        }
+
+        public string GpsDescriptionRadarSignal { get { return "GlobalRadarSignal"; } }
+        private const float RadarVisibilityRange = 500000f; // 500km
+
+        public void RemoveRadarGpsFromAllPlayers()
+        {
+            foreach (var identity in MySession.Static.Players.GetAllIdentities())
+            {
+                var gpsList = MyAPIGateway.Session?.GPS.GetGpsList(identity.IdentityId);
+                if (gpsList == null) continue;
+
+                foreach (var gps in gpsList)
+                {
+                    if (!(gps is MyGps myGps)) continue;
+                    if (myGps.Description == null) continue;
+                    if (!myGps.Description.Contains(GpsDescriptionRadarSignal)) continue;
+                    MyAPIGateway.Session?.GPS.RemoveGps(identity.IdentityId, gps);
+                }
+            }
+        }
+
+        public void ShowRadarBeacons()
+        {
+            RemoveRadarGpsFromAllPlayers();
+
+            var gpsCollection = (MyGpsCollection)MyAPIGateway.Session?.GPS;
+            if (gpsCollection == null)
+                return;
+
+            // собираем все активные радары
+            var activeRadars = new List<MyFunctionalBlock>();
+            foreach (var kv in IdentityRadars)
+            {
+                foreach (var b in kv.Value)
+                {
+                    if (b == null || b.Closed || b.MarkedForClose) continue;
+                    var beacon = b as IMyBeacon;
+                    if (beacon == null || !beacon.IsWorking) continue;
+                    var hud = beacon.HudText ?? string.Empty;
+                    if (hud.IndexOf("arming", StringComparison.OrdinalIgnoreCase) >= 0) continue;
+                    activeRadars.Add(b);
+                }
+            }
+
+            foreach (var player in MySession.Static.Players.GetOnlinePlayers())
+            {
+                long identityId = player.Identity.IdentityId;
+
+                var controlled = player.Controller?.ControlledEntity?.Entity;
+                var playerPos = controlled?.PositionComp?.WorldAABB.Center
+                             ?? player.Character?.PositionComp?.WorldAABB.Center;
+                if (playerPos == null) continue;
+
+                foreach (var radar in activeRadars)
+                {
+                    var radarPos = radar.PositionComp.WorldAABB.Center;
+                    double distance = Vector3D.Distance(playerPos.Value, radarPos);
+                    var radarBeacon = radar as IMyBeacon;
+
+                    if (distance <= RadarVisibilityRange)
+                        continue;
+
+                    var ownIdentities = new HashSet<long> { identityId };
+                    var playerFaction = MySession.Static.Factions?.TryGetPlayerFaction(identityId);
+                    if (playerFaction != null)
+                        foreach (var memberId in playerFaction.Members.Keys)
+                            ownIdentities.Add(memberId);
+
+                    IMyFaction radarOwnerFaction = null;
+                    Color gpsColor;
+                    if (ownIdentities.Contains(radar.OwnerId))
+                    {
+                        gpsColor = new Color(0, 255, 0); // свой/фракционный
+                    }
+                    else
+                    {
+                        radarOwnerFaction = MySession.Static.Factions?.TryGetPlayerFaction(radar.OwnerId);
+
+                        //Instance?.Log.Info($"radarGrid='{radar.CubeGrid?.DisplayName ?? "null"}', radarOwnerId={radar.OwnerId}, " +
+                        //    $"radarOwnerFaction='{radarOwnerFaction?.Tag ?? "null"}'");
+
+                        if (radarOwnerFaction == null)
+                        {
+                            gpsColor = new Color(255, 50, 50); // владелец радара без фракции = враг
+                            //Instance?.Log.Info($"Radar color: player='{player.DisplayName}', radar='{radar.CubeGrid?.DisplayName}', result=RED (radar owner no faction)");
+                        }
+                        else if (playerFaction == null)
+                        {
+                            gpsColor = new Color(255, 50, 50); // игрок без фракции = все чужие враги
+                            //Instance?.Log.Info($"Radar color: player='{player.DisplayName}', radar='{radar.CubeGrid?.DisplayName}', result=RED (player no faction)");
+                        }
+                        else
+                        {
+                            var relation = MyAPIGateway.Session.Factions.GetRelationBetweenFactions(playerFaction.FactionId, radarOwnerFaction.FactionId);
+                            switch (relation)
+                            {
+                                case MyRelationsBetweenFactions.Friends:
+                                    gpsColor = new Color(0, 128, 0);
+                                    break;
+                                case MyRelationsBetweenFactions.Neutral:
+                                    gpsColor = new Color(255, 255, 255);
+                                    break;
+                                default:
+                                    if (radarOwnerFaction.Tag == "UNKN")
+                                        gpsColor = new Color(255, 255, 255);
+                                    else
+                                        gpsColor = new Color(255, 50, 50);
+                                    break;
+                            }
+                            //Instance?.Log.Info($"Radar relation result: " + $"radarFactionId={radarOwnerFaction?.FactionId}, " + $"relationValue={relation}");
+                        }
+                    }
+                    var prefix = radarOwnerFaction == null ? "" : radarOwnerFaction?.Tag + '.';
+                    var gps = CreateGpsColored(radarPos, prefix + radarBeacon.HudText, GpsDescriptionRadarSignal, gpsColor);
+                    var gpsRef = gps;
+                    gpsCollection.SendAddGpsRequest(identityId, ref gpsRef, 0L, false);
+                }
+            }
+        }
+
+        private MyGps CreateGpsColored(Vector3D position, string name, string description, Color color)
+        {
+            return new MyGps
+            {
+                Coords = position,
+                Name = name,
+                DisplayName = name,
+                Description = description,
+                GPSColor = color,
+                IsContainerGPS = true,
+                ShowOnHud = true,
+                DiscardAt = new TimeSpan?()
+            };
         }
 
         /// <summary>

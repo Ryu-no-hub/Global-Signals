@@ -28,9 +28,10 @@ namespace TorchPlugin
         public Dictionary<long, int> factionScores = new Dictionary<long, int>();
         private static readonly Dictionary<MyDefinitionId, double> WeaponDps = new Dictionary<MyDefinitionId, double>(MyDefinitionId.Comparer);
 
-        //private static Dictionary<MyPlanet, List<Vector3D>> planetPoints = new Dictionary<MyPlanet, List<Vector3D>>();
+        private static List<string> uncapturablePlanets = new List<string> { "Overvent" };
         private static Dictionary<MyPlanet, List<KeyValuePair<Vector3D, bool>>> planetPoints = new Dictionary<MyPlanet, List<KeyValuePair<Vector3D, bool>>>();
-        static double capturableVolume = 0;
+        static double capturableVolumeTotal = 0;
+        static Dictionary<MyPlanet, double> capturableVolumes = new Dictionary<MyPlanet, double>();
         //static readonly MyDefinitionId MastBeaconDefId = new MyDefinitionId(typeof(MyObjectBuilder_Beacon), "LG_Ship_Mast_3");
         static readonly List<MyDefinitionId> MastBeaconDefIdList = new List<MyDefinitionId> 
         { 
@@ -593,6 +594,7 @@ namespace TorchPlugin
                 factionPlanetCoveredFraction[factionId] = factionPlanetsCoverage;
             }
             string caprutedPlanets = "";
+            double capturedVolume = 0.0;
 
             foreach (var kv in planetPoints)
             {
@@ -618,16 +620,21 @@ namespace TorchPlugin
                 }
 
                 string coverage = "";
+                bool capturedNow = false;
                 if (!factionPlanetsCoverage.TryGetValue(planet.EntityId, out var coveragePlanetFraction))
                 {
                     coveragePlanetFraction = 0.0;
                     //Log.Info($"CapturedResults: faction '{faction.Name}' has no coverage entry for planet '{planetName}', treating as 0.");
                 }
                 else
-                    coverage = $"Control coverage of '{planetName}' = {coveragePlanetFraction * 100:F1}%";
+                {
+                    capturedNow = coveragePlanetFraction >= CaptureThreshold;
+                    coverage = capturedNow ? "Capture" : "Control";
+                    coverage += $" coverage of '{planetName}' = {coveragePlanetFraction * 100:F1}%";
                     //Log.Info($"CapturedResults: faction '{faction.Name}' coverage for planet '{planetName}' = {coveragePlanetFraction}");
+                }
 
-                bool capturedNow = coveragePlanetFraction >= CaptureThreshold;
+                
 
                 if (capturedNow)
                 {
@@ -639,16 +646,12 @@ namespace TorchPlugin
                     if (!factionScoreInfo.CapturedPlanets.Contains(planetName))
                     {
                         factionScoreInfo.CapturedPlanets.Add(planetName);
-                        //resultSB.AppendLine($"Planet '{planetName}' CAPTURED by '{faction.Tag}', Coverage = {coveragePlanetFraction * 100:F1}% / 80%");
                         resultSB.AppendLine($"Planet '{planetName}' CAPTURED! Coverage = {coveragePlanetFraction * 100:F1}% / 80%");
                     }
-                    //else
-                    //{
-                    //    resultSB.AppendLine($"Planet '{planetName}' still CAPTURED, Coverage = {coveragePlanetFraction * 100:F1}% / 80%");
-                    //}
 
                     if (Plugin.debug) Log.Info($"CapturedResults: Planet '{planetName}' CAPTURED by '{faction.Tag}', coveragePlanetFraction = {coveragePlanetFraction}");
-                    //resultSB.AppendLine($"Planet '{planetName}' CAPTURED by '{faction.Tag}', Coverage = {coveragePlanetFraction * 100:F1}% / 80%");
+
+                    capturedVolume += capturableVolumes[planet];
                 }
                 else
                 {
@@ -665,7 +668,7 @@ namespace TorchPlugin
             }
 
             if(!string.IsNullOrEmpty(caprutedPlanets))
-                resultSB.AppendLine($"Captured planets: {caprutedPlanets}.");
+                resultSB.AppendLine($"Captured planets: {caprutedPlanets}. \nCaptured volume %: {capturedVolume/capturableVolumeTotal * 100:F2}% ");
             return resultSB;
         }
 
@@ -673,6 +676,9 @@ namespace TorchPlugin
         {
             foreach (var planet in MyPlanets.GetPlanets())
             {
+                if (uncapturablePlanets.Contains(GetBasePlanetName(planet)))
+                    continue;
+
                 const int pointCount = 500;
 
                 double innerR = planet.AverageRadius;
@@ -828,24 +834,34 @@ namespace TorchPlugin
 
 
 
-        public static void CalculateCapturableVolume()
+        public static void CalculateCapturableVolumes()
         {
-            if (capturableVolume > 0)
+            if (capturableVolumeTotal > 0)
                 return;
 
             foreach (var planet in MyPlanets.GetPlanets())
             {
+                if (uncapturablePlanets.Contains(GetBasePlanetName(planet)))
+                    continue;
                 // same inner/outer radii you use for point generation
                 double innerR = planet.AverageRadius;
                 double outerR = planet.MaximumRadius * Math.Pow((planet.Generator.SurfaceGravity / 0.05), 1.0 / 7.0);
 
-                double innerR3 = innerR * innerR * innerR;
-                double outerR3 = outerR * outerR * outerR;
+                double innerR3 = Math.Pow(innerR, 3);
+                double outerR3 = Math.Pow(outerR, 3);
 
                 // volume of spherical shell: 4/3 π (R^3 - r^3)
                 double shellVolume = (4.0 / 3.0) * Math.PI * (outerR3 - innerR3);
 
-                capturableVolume += shellVolume;
+                capturableVolumes[planet] = shellVolume;
+                capturableVolumeTotal += shellVolume;
+
+                Log.Info($"CapturedResults: capturableVolume of '{GetBasePlanetName(planet)}': {capturableVolumes[planet]}");
+            }
+
+            foreach (var kvp in capturableVolumes)
+            {
+                Log.Info($"CapturedResults: capturableVolume %%% of '{GetBasePlanetName(kvp.Key)}': {kvp.Value / capturableVolumeTotal * 100:F2}% ");
             }
         }
 

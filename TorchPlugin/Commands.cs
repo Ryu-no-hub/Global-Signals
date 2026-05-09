@@ -30,16 +30,16 @@ namespace TorchPlugin
             Respond("  !gm scores update");
             Respond("    Updates factions scores");
 
-            Respond("  !gm scores showfactions");
+            Respond("  !gm scores show");
             Respond("    Displays factions scores");
 
-            Respond("  !gm scores enlistfactions");
-            Respond("    Update factions list");
+            //Respond("  !gm scores enlistfactions");
+            //Respond("    Update factions list");
 
             Respond("  !gm scores drawpoints");
             Respond("    Draw covered planet points (Earthlike)");
 
-            Respond("  !gm scores removepoints");
+            Respond("  !gm scores delpoints");
             Respond("    Remove covered planet points (Earthlike)");
 
             Respond("  !gm gs enable");
@@ -48,11 +48,11 @@ namespace TorchPlugin
             Respond("  !gm gs disable");
             Respond("    Disables global signals in space");
 
-            Respond("  !gm gs findgrids");
-            Respond("    Finds detectable grids");
+            //Respond("  !gm gs findgrids");
+            //Respond("    Finds detectable grids");
 
-            Respond("  !gm gs showgrids");
-            Respond("    Shows detectable grids");
+            //Respond("  !gm gs showgrids");
+            //Respond("    Shows detectable grids");
 
             //Respond("  !globalsignals subcmd <name> <value>");
             //Respond("    TODO Your subcommand");
@@ -144,7 +144,7 @@ namespace TorchPlugin
             //RespondWithFactionScores(resultSB.ToString());
         }
 
-        [Command("gm scores showfactions", "Displays factions scores")]
+        [Command("gm scores show", "Displays factions scores")]
         [Permission(MyPromoteLevel.Admin)]
         public void ShowScores()
         {
@@ -172,25 +172,23 @@ namespace TorchPlugin
         [Permission(MyPromoteLevel.Admin)]
         public void DrawPoints()
         {
-            long playerId = 0;
-            var ply = Context?.Player;
-            if (ply != null)
-                playerId = ply.IdentityId;
+            var contextPlayer = Context?.Player;
+            if (contextPlayer == null)
+                return;
 
-            Plugin.SendTerritoryDebugGpsToAsker(true, ply.IdentityId);
-            Respond($"{Plugin.PluginName}: DrawPoints gps are sent to you. Disappear in 3 minutes.");
+            Plugin.SendTerritoryDebugGpsToAsker(true, contextPlayer.IdentityId);
+            Respond($"{Plugin.PluginName}: DrawPoints gps are sent to you. They will disappear in 3 minutes.");
         }
 
-        [Command("gm scores removepoints", "Remove covered planet points (Earthlike)")]
+        [Command("gm scores delpoints", "Remove covered planet points (Earthlike)")]
         [Permission(MyPromoteLevel.Admin)]
         public void RemovePoints()
         {
-            long playerId = 0;
-            var ply = Context?.Player;
-            if (ply != null)
-                playerId = ply.IdentityId;
+            var contextPlayer = Context?.Player;
+            if (contextPlayer == null)
+                return;
 
-            Plugin.SendTerritoryDebugGpsToAsker(false, ply.IdentityId);
+            Plugin.SendTerritoryDebugGpsToAsker(false, contextPlayer.IdentityId);
             Respond($"{Plugin.PluginName}: DrawPoints gps are removed.");
         }
 
