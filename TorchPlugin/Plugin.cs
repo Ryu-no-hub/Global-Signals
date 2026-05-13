@@ -2,8 +2,10 @@
 
 using System;
 using System.Collections.Generic;
+using System.Collections.ObjectModel;
 using System.IO;
 using System.Linq;
+using System.Runtime.InteropServices;
 using System.Text;
 using System.Threading;
 using System.Windows.Controls;
@@ -66,6 +68,15 @@ namespace TorchPlugin
         public static readonly Dictionary<long, List<MyFunctionalBlock>> IdentityRadars = new Dictionary<long, List<MyFunctionalBlock>>();
 
 
+        static readonly Dictionary<int, string> sizeMapping = new Dictionary<int, string>
+        {
+            [500] = "Colossal",
+            [250] = "Huge",
+            [100] = "Large",
+            [50] = "Medium",
+            [25] = "Small",
+            [0] = "Tiny",
+        };
 
         public string GpsDescriptionGlobalSignals { get { return Config.GpsDescriptionString; } }
         public bool UseConnectedGrids { get { return Config.UseConnectedGrids; } }
@@ -443,21 +454,18 @@ namespace TorchPlugin
                     {
                         passed_5min = 2;
                         lastScoreTime = DateTime.UtcNow;
+
                         StringBuilder resultSB = new StringBuilder();
+                        Log.Info($"shouldRunDaily: {shouldRunDaily}, shouldRunRestart: {shouldRunRestart}, lastScoreTime: {lastScoreTime}, utcNow: {utcNow}");
                         resultSB = UpdateFactionsList(resultSB);
                         resultSB = ScoreFactions(resultSB);
-                        PrintScores(resultSB);
+                        MyVisualScriptLogicProvider.SendChatMessage(resultSB.ToString());
                     }
                 }
                 if ((passed_5min == 0) && (DateTime.UtcNow - lastScoreTime > TimeSpan.FromMinutes(5)))
                     passed_5min = 1;
             }
             PatchHelpers.PatchUpdates();
-        }
-
-        public void PrintScores(StringBuilder resultSB)
-        {
-            MyVisualScriptLogicProvider.SendChatMessage(resultSB.ToString());
         }
 
         public void SendTerritoryDebugGpsToAsker(bool sendRemove, long playerId = 0)
@@ -872,10 +880,10 @@ namespace TorchPlugin
                         if (cubeGrid.Physics == null) continue;
                         if (cubeGrid.NaturalGravity.Length() > 0) continue;
 
-                        Log.Info($"Detectable grid: '{cubeGrid.DisplayName}', " +
-    $"NpcSpawned={cubeGrid.IsNpcSpawnedGrid}, " +
-    $"BigOwners={cubeGrid.BigOwners?.Count ?? 0}, " +
-    $"IsNPCOwned={IsNPCOwned(cubeGrid)}");
+    //                    Log.Info($"Detectable grid: '{cubeGrid.DisplayName}', " +
+    //$"NpcSpawned={cubeGrid.IsNpcSpawnedGrid}, " +
+    //$"BigOwners={cubeGrid.BigOwners?.Count ?? 0}, " +
+    //$"IsNPCOwned={IsNPCOwned(cubeGrid)}");
 
                         gridsList.Add(cubeGrid);
                     }
@@ -894,10 +902,10 @@ namespace TorchPlugin
                         if (cubeGrid.Physics == null) continue;
                         if (cubeGrid.NaturalGravity.Length() > 0) continue;
 
-                        Log.Info($"Detectable grid: '{cubeGrid.DisplayName}', " +
-    $"NpcSpawned={cubeGrid.IsNpcSpawnedGrid}, " +
-    $"BigOwners={cubeGrid.BigOwners?.Count ?? 0}, " +
-    $"IsNPCOwned={IsNPCOwned(cubeGrid)}");
+    //                    Log.Info($"Detectable grid: '{cubeGrid.DisplayName}', " +
+    //$"NpcSpawned={cubeGrid.IsNpcSpawnedGrid}, " +
+    //$"BigOwners={cubeGrid.BigOwners?.Count ?? 0}, " +
+    //$"IsNPCOwned={IsNPCOwned(cubeGrid)}");
 
                         gridsList.Add(cubeGrid);
                     }
@@ -973,13 +981,32 @@ namespace TorchPlugin
                         continue;
 
                     Vector3D position = grid.PositionComp.WorldAABB.Center;
-                    MyGps gps = CreateGps(position, grid.DisplayName, GpsDescriptionGlobalSignals);
+                    string gridName = MakeShowName(grid);
+
+                    MyGps gps = CreateGps(position, gridName, GpsDescriptionGlobalSignals);
                     MyGps gpsRef = gps;
 
                     long entity = 0L;
                     gpsCollection.SendAddGpsRequest(identityId, ref gpsRef, entity, false);
                 }
             }
+        }
+
+        private static string MakeShowName(IMyCubeGrid grid)
+        {
+            string name = "";
+
+            foreach (var _type in sizeMapping)
+            {
+                if (grid.PositionComp.WorldAABB.Size.AbsMax() >= _type.Key)
+                {
+                    name = _type.Value;
+                    break;
+                }
+            }
+            name += grid.IsStatic ? " Station" : " Ship";
+
+            return name;
         }
 
         //public void ShowGrids()

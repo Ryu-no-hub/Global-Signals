@@ -3,6 +3,7 @@ using Torch.Commands.Permissions;
 using VRage.Game.ModAPI;
 using NLog;
 using System.Text;
+using Sandbox.Game;
 
 namespace TorchPlugin
 {
@@ -140,7 +141,7 @@ namespace TorchPlugin
             resultSB.Clear();
             resultSB = Plugin.UpdateFactionsList(resultSB);
             resultSB = Plugin.ScoreFactions(resultSB);
-            Plugin.PrintScores(resultSB);
+            MyVisualScriptLogicProvider.SendChatMessage(resultSB.ToString());
             //RespondWithFactionScores(resultSB.ToString());
         }
 
