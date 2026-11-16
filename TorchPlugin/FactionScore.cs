@@ -6,6 +6,7 @@ using System.Linq;
 using System.Text;
 using Sandbox.Common.ObjectBuilders;
 using Sandbox.Definitions;
+using Sandbox.Game;
 using Sandbox.Game.Entities;
 using Sandbox.Game.Entities.Cube;
 using Sandbox.Game.Entities.Planet;
@@ -28,11 +29,14 @@ namespace TorchPlugin
         public Dictionary<long, int> factionScores = new Dictionary<long, int>();
         private static readonly Dictionary<MyDefinitionId, double> WeaponDps = new Dictionary<MyDefinitionId, double>(MyDefinitionId.Comparer);
 
-        private static List<string> uncapturablePlanets = new List<string> { "Overvent" };
+        private static List<string> uncapturablePlanets = new List<string> { "Overvent", "Pertam" };
         private static Dictionary<MyPlanet, List<KeyValuePair<Vector3D, bool>>> planetPoints = new Dictionary<MyPlanet, List<KeyValuePair<Vector3D, bool>>>();
-        static double capturableVolumeTotal = 0;
-        static Dictionary<MyPlanet, double> capturableVolumes = new Dictionary<MyPlanet, double>();
+        static double capturableValueTotal = 0;
+        static Dictionary<MyPlanet, double> capturablePlanetValues = new Dictionary<MyPlanet, double>();
         //static readonly MyDefinitionId MastBeaconDefId = new MyDefinitionId(typeof(MyObjectBuilder_Beacon), "LG_Ship_Mast_3");
+        static readonly Dictionary<long, IMyEntity> _lastControlled = new Dictionary<long, IMyEntity>();
+        static readonly Dictionary<long, DateTime> _movementIgnoreUntil = new Dictionary<long, DateTime>();
+        static readonly TimeSpan RespawnGrace = TimeSpan.FromSeconds(15);
         static readonly List<MyDefinitionId> MastBeaconDefIdList = new List<MyDefinitionId> 
         { 
             new MyDefinitionId(typeof(MyObjectBuilder_Beacon), "TerritoryBeacon"),
@@ -48,6 +52,9 @@ namespace TorchPlugin
         public static readonly Dictionary<long, TimeSpan> _activeTime2Weeks = new Dictionary<long, TimeSpan>();
         public static readonly Dictionary<long, DateTime> _lastSeen = new Dictionary<long, DateTime>();
         public static readonly Dictionary<long, List<ActivityRecord>> _recentActivity = new Dictionary<long, List<ActivityRecord>>();
+        private static readonly HashSet<long> afklist = new HashSet<long>();
+        static readonly HashSet<long> _onlinePlayers = new HashSet<long>();
+        static readonly Dictionary<long, DateTime> _playerJoined = new Dictionary<long, DateTime>();
 
         const float CaptureThreshold = 0.8f;
         public static Dictionary<long, Dictionary<long, double>> factionPlanetCoveredFraction = new Dictionary<long, Dictionary<long, double>>();
@@ -376,7 +383,7 @@ namespace TorchPlugin
                     double gridPower =
                         Math.Pow(pcu, 0.2) *
                         Math.Pow(integrity, 0.3) *
-                        Math.Pow(gridDps + 1.0, 0.3) +
+                        Math.Pow(gridDps + 1.0, 0.5) +
                         Math.Pow(gridProduction, 0.6);
 
                     if (Plugin.debug)
@@ -406,6 +413,13 @@ namespace TorchPlugin
             if (playerName == null)
             {
                 IMyPlayer player = MyAPIGateway.Players.TryGetIdentityId(identityId);
+                if (player == null)
+                {
+                    // NPC-идентичность или игрок без IMyPlayer — территории не считаем
+                    if (Plugin.debug)
+                        Log.Info($"CalculatePlayerTerritoryControl: no IMyPlayer for identityId={identityId}, skip");
+                    return 0f;
+                }
                 playerName = player.DisplayName;
             }
 
@@ -646,12 +660,12 @@ namespace TorchPlugin
                     if (!factionScoreInfo.CapturedPlanets.Contains(planetName))
                     {
                         factionScoreInfo.CapturedPlanets.Add(planetName);
-                        resultSB.AppendLine($"Planet '{planetName}' CAPTURED! Coverage = {coveragePlanetFraction * 100:F1}% / 80%");
+                        resultSB.AppendLine($"{planetName} CAPTURED! Coverage: {coveragePlanetFraction * 100:F1}% / 80%");
                     }
 
-                    if (Plugin.debug) Log.Info($"CapturedResults: Planet '{planetName}' CAPTURED by '{faction.Tag}', coveragePlanetFraction = {coveragePlanetFraction}");
+                    if (Plugin.debug) Log.Info($"CapturedResults: {planetName} CAPTURED by '{faction.Tag}', coveragePlanetFraction: {coveragePlanetFraction}");
 
-                    capturedVolume += capturableVolumes[planet];
+                    capturedVolume += capturablePlanetValues[planet];
                 }
                 else
                 {
@@ -659,8 +673,8 @@ namespace TorchPlugin
                     {
                         // Drop capture if control falls below threshold
                         factionScoreInfo.CapturedPlanets.Remove(planetName);
-                        if (Plugin.debug) Log.Info($"CapturedResults: Planet '{planetName}' capture LOST for '{faction.Tag}', coveragePlanetFraction = {coveragePlanetFraction}");
-                        resultSB.AppendLine($"Planet '{planetName}' LOST! Coverage = {coveragePlanetFraction * 100:F1}% / 80%");
+                        if (Plugin.debug) Log.Info($"CapturedResults: {planetName} capture LOST for '{faction.Tag}', coveragePlanetFraction: {coveragePlanetFraction}");
+                        resultSB.AppendLine($"{planetName} LOST! Coverage: {coveragePlanetFraction * 100:F1}% / 80%");
                     }
                     else if (!string.IsNullOrEmpty(coverage))
                         resultSB.AppendLine(coverage);
@@ -668,7 +682,7 @@ namespace TorchPlugin
             }
 
             if(!string.IsNullOrEmpty(caprutedPlanets))
-                resultSB.AppendLine($"Captured planets: {caprutedPlanets}. \nCaptured volume %: {capturedVolume/capturableVolumeTotal * 100:F2}% ");
+                resultSB.AppendLine($"Captured planets: {caprutedPlanets}. \nCaptured system fraction: {capturedVolume/capturableValueTotal * 100:F2}% ");
             return resultSB;
         }
 
@@ -834,34 +848,70 @@ namespace TorchPlugin
 
 
 
-        public static void CalculateCapturableVolumes()
+        //public static void CalculateCapturableVolumes()
+        //{
+        //    if (capturableVolumeTotal > 0)
+        //        return;
+
+        //    foreach (var planet in MyPlanets.GetPlanets())
+        //    {
+        //        if (uncapturablePlanets.Contains(GetBasePlanetName(planet)))
+        //            continue;
+
+        //        // same inner/outer radii as used for point generation
+        //        double innerR = planet.AverageRadius;
+        //        double outerR = planet.MaximumRadius * Math.Pow((planet.Generator.SurfaceGravity / 0.05), 1.0 / 7.0); // gravity height
+
+        //        double innerR3 = Math.Pow(innerR, 3);
+        //        double outerR3 = Math.Pow(outerR, 3);
+
+        //        // volume of spherical shell: 4/3 π (R^3 - r^3)
+        //        double shellVolume = (4.0 / 3.0) * Math.PI * (outerR3 - innerR3);
+
+        //        capturableVolumes[planet] = shellVolume;
+        //        capturableVolumeTotal += shellVolume;
+
+        //        Log.Info($"CapturedResults: outerR of '{GetBasePlanetName(planet)}': {outerR}");
+        //        Log.Info($"CapturedResults: capturableVolume of '{GetBasePlanetName(planet)}': {capturableVolumes[planet]}");
+        //    }
+
+        //    foreach (var kvp in capturableVolumes)
+        //    {
+        //        Log.Info($"CapturedResults: capturableVolume %%% of '{GetBasePlanetName(kvp.Key)}': {kvp.Value / capturableVolumeTotal * 100:F2}% ");
+        //    }
+        //}
+
+
+        public static void CalculateCapturablePlanetValues()
         {
-            if (capturableVolumeTotal > 0)
+            if (capturableValueTotal > 0)
                 return;
 
             foreach (var planet in MyPlanets.GetPlanets())
             {
                 if (uncapturablePlanets.Contains(GetBasePlanetName(planet)))
                     continue;
-                // same inner/outer radii you use for point generation
+
+                // same inner/outer radii as used for point generation
                 double innerR = planet.AverageRadius;
-                double outerR = planet.MaximumRadius * Math.Pow((planet.Generator.SurfaceGravity / 0.05), 1.0 / 7.0);
+                double outerR = planet.MaximumRadius * Math.Pow((planet.Generator.SurfaceGravity / 0.05), 1.0 / 7.0); // gravity height
 
                 double innerR3 = Math.Pow(innerR, 3);
                 double outerR3 = Math.Pow(outerR, 3);
 
                 // volume of spherical shell: 4/3 π (R^3 - r^3)
                 double shellVolume = (4.0 / 3.0) * Math.PI * (outerR3 - innerR3);
+                double smoothedVolume = Math.Pow(shellVolume, 0.5) + 10000000;
 
-                capturableVolumes[planet] = shellVolume;
-                capturableVolumeTotal += shellVolume;
+                capturablePlanetValues[planet] = smoothedVolume;
+                capturableValueTotal += smoothedVolume;
 
-                Log.Info($"CapturedResults: capturableVolume of '{GetBasePlanetName(planet)}': {capturableVolumes[planet]}");
+                Log.Info($"CapturedResults: '{GetBasePlanetName(planet)}': innerR = {innerR}, outerR = {outerR:F0}, smoothedVolume: {capturablePlanetValues[planet]:F2}");
             }
 
-            foreach (var kvp in capturableVolumes)
+            foreach (var kvp in capturablePlanetValues)
             {
-                Log.Info($"CapturedResults: capturableVolume %%% of '{GetBasePlanetName(kvp.Key)}': {kvp.Value / capturableVolumeTotal * 100:F2}% ");
+                Log.Info($"CapturedResults: capturableVolume %%% of '{GetBasePlanetName(kvp.Key)}': {kvp.Value / capturableValueTotal * 100:F2}% ");
             }
         }
 
@@ -896,12 +946,13 @@ namespace TorchPlugin
             return score;
         }
 
-
         public static void TickActivity()
         {
             var now = DateTime.UtcNow;
             var players = new List<IMyPlayer>();
             MyAPIGateway.Players.GetPlayers(players);
+
+            var seenThisTick = new HashSet<long>();
 
             foreach (var p in players)
             {
@@ -909,37 +960,85 @@ namespace TorchPlugin
                 if (playerId <= 0)
                     continue;
 
+                string player_name = p.DisplayName;
+
                 if (p.IsBot || MySession.Static.Players.IdentityIsNpc(playerId))
                     continue;
 
+                seenThisTick.Add(playerId);
+
+                // ── Детект "только что зашёл": не был онлайн в прошлом тике, а сейчас есть.
+                bool justJoined = !_onlinePlayers.Contains(playerId);
+
+                if (justJoined)
+                {
+                    _onlinePlayers.Add(playerId);
+                    _playerJoined[playerId] = now;
+
+                    // Сбрасываем все baseline'ы, чтобы AFK-эвристика стартовала с нуля
+                    // и не смотрела на данные из прошлой сессии.
+                    _lastSeen[playerId] = now;
+                    _lastMovement[playerId] = now;
+
+                    // Если игрок остался в afklist с прошлой сессии — убираем молча,
+                    // без "X is no longer afk.".
+                    afklist.Remove(playerId);
+
+                    if (Plugin.debug)
+                        Log.Info($"TickActivity: '{player_name}' ({playerId}) joined; baselines reset");
+
+                    continue; // на тике захода AFK-логику вообще не трогаем
+                }
+
+                // dt считаем от прошлого тика и СРАЗУ сдвигаем baseline.
+                // Иначе при AFK _lastSeen не двигается, dt растёт, и через 5 минут
+                // попадает в ветку "long gap".
                 if (!_lastSeen.TryGetValue(playerId, out DateTime last))
                     last = now;
 
                 var dt = now - last;
+                _lastSeen[playerId] = now;   // ← ключевое изменение
 
-                // ignore bad gaps / server stalls
+                // Долгий gap (лаг/реконнект/некорректные системные часы).
+                // Сбрасываем _lastMovement ТОЛЬКО если игрок ещё не был помечен AFK —
+                // иначе мы бы искусственно "снимали" AFK-статус с игрока, который
+                // реально не двигался, просто потому что сервер лагнул.
                 if (dt <= TimeSpan.Zero || dt > TimeSpan.FromMinutes(5))
                 {
-                    _lastSeen[playerId] = now; // resync baseline
+                    if (!afklist.Contains(playerId))
+                        _lastMovement[playerId] = now;
                     continue;
                 }
 
-                // here you plug in whatever AFK heuristic you prefer
                 if (IsPlayerAfk(p))
-                    continue;           // do NOT move _lastSeen; "last seen" remains before AFK
+                {
+                    if (string.IsNullOrEmpty(player_name))
+                        continue;
 
-                // count as active
+                    if (!afklist.Contains(playerId))
+                    {
+                        MyVisualScriptLogicProvider.SendChatMessage($"{player_name} is now afk...");
+                        afklist.Add(playerId);
+                    }
+                    continue; // _activeTime не пополняем — игрок AFK
+                }
+
+                if (afklist.Contains(playerId))
+                {
+                    afklist.Remove(playerId);
+                    MyVisualScriptLogicProvider.SendChatMessage($"{player_name} is no longer afk");
+                }
+
+                // Активный игрок: пополняем _activeTime на dt
                 if (!_activeTime.TryGetValue(playerId, out TimeSpan t))
                     t = TimeSpan.Zero;
 
                 t += dt;
                 _activeTime[playerId] = t;
-                _lastSeen[playerId] = now;    // update only when considered active
+                // _lastSeen уже обновлён выше — повторно присваивать не нужно
 
-                // NEW: Update recent activity records (daily aggregation)
                 UpdateRecentActivity(playerId, dt.TotalHours, now);
 
-                // reflect into persisted scores
                 var storage = Plugin.Instance?._scores;
                 if (storage == null)
                     continue;
@@ -959,6 +1058,24 @@ namespace TorchPlugin
 
                 info.ActivityHours = t.TotalHours;
                 info.LastActivityUpdateUtc = now;
+            }
+
+            // ── Уборка состояния для тех, кто вышел.
+            foreach (var id in _onlinePlayers.ToList())
+            {
+                if (!seenThisTick.Contains(id))
+                {
+                    _onlinePlayers.Remove(id);
+                    _playerJoined.Remove(id);
+                    _lastMovement.Remove(id);
+                    _lastControlled.Remove(id);
+                    _movementIgnoreUntil.Remove(id);
+                    // afklist по желанию тоже можно чистить при выходе,
+                    // чтобы не копился мусор от игроков, которые вышли будучи AFK:
+                    afklist.Remove(id);
+                    // _lastSeen оставляем — используется для детекта "долгого gap"
+                    // при следующем заходе (см. ветку dt > 5 min).
+                }
             }
         }
 
@@ -1020,7 +1137,11 @@ namespace TorchPlugin
             }
         }
 
-
+        public static void RegisterMovement(long identityId)
+        {
+            if (identityId <= 0) return;
+            _lastMovement[identityId] = DateTime.UtcNow;
+        }
         public static void RegisterMovement(IMyCharacter character)
         {
             var id = character.ControllerInfo?.ControllingIdentityId ?? 0;
@@ -1032,29 +1153,98 @@ namespace TorchPlugin
         {
             var id = p.IdentityId;
             if (!_lastMovement.TryGetValue(id, out var lastMove))
-                return true; // never moved → treat as AFK
+                return true; // never moved -> treat as AFK
 
             return (DateTime.UtcNow - lastMove) > TimeSpan.FromMinutes(5);
         }
 
+        private static bool IsControlledGone(IMyEntity e)
+        {
+            if (e == null) return true;                       // игрок был без тела (экран смерти/респауна)
+            if (e.Closed || e.MarkedForClose) return true;    // сущность удалена
+            if (e is IMyCharacter c && c.IsDead) return true; // умерший персонаж
+            return false;
+        }
+
         public static void TickMovement()
         {
-            var entities = new HashSet<IMyEntity>();
-            MyAPIGateway.Entities.GetEntities(entities, e => e is IMyCharacter);
+            var now = DateTime.UtcNow;
+            var players = new List<IMyPlayer>();
+            MyAPIGateway.Players.GetPlayers(players);
 
-            foreach (var e in entities)
+            foreach (var p in players)
             {
-                var ch = (IMyCharacter)e;
-                if (ch.Physics == null) continue;
+                long id = p.IdentityId;
+                if (id <= 0) continue;
 
-                if (ch.Physics.LinearVelocity.LengthSquared() > 0.01f ||
-                    ch.Physics.AngularVelocity.LengthSquared() > 0.01f)
+                var controlled = p.Controller?.ControlledEntity?.Entity;
+
+                // Детект респауна: прежняя сущность мертва/удалена/отсутствовала, теперь другая.
+                // Обычная посадка/выход из кресла сюда не попадает: старая сущность жива.
+                if (_lastControlled.TryGetValue(id, out var prev) && !ReferenceEquals(prev, controlled))
                 {
-                    RegisterMovement(ch);
+                    if (controlled != null && IsControlledGone(prev))
+                    {
+                        _movementIgnoreUntil[id] = now + RespawnGrace;
+                        if (Plugin.debug)
+                            Log.Info($"TickMovement: respawn detected for {id}, ignoring movement for {RespawnGrace.TotalSeconds:0}s");
+                    }
+                }
+                _lastControlled[id] = controlled;   // сохраняем и null, чтобы поймать переход null -> новое тело
+
+                if (controlled == null) continue;
+
+                // Grace-период после респауна
+                if (_movementIgnoreUntil.TryGetValue(id, out var until))
+                {
+                    if (now < until) continue;
+                    _movementIgnoreUntil.Remove(id);
+                }
+
+                // Игрок управляет своим персонажем напрямую
+                if (controlled is IMyCharacter ch)
+                {
+                    if (ch.IsDead || ch.Physics == null) continue;
+
+                    if (ch.Physics.LinearVelocity.LengthSquared() > 0.01f ||
+                        ch.Physics.AngularVelocity.LengthSquared() > 0.01f)
+                    {
+                        RegisterMovement(id);
+                    }
+                    continue;
+                }
+
+                // Игрок сидит в блоке грида
+                if (controlled is IMyCubeBlock block)
+                {
+                    var grid = block.CubeGrid;
+                    if (grid?.Physics == null) continue;
+
+                    if (grid.Physics.LinearVelocity.LengthSquared() > 0.01f ||
+                        grid.Physics.AngularVelocity.LengthSquared() > 0.01f)
+                    {
+                        RegisterMovement(id);
+                    }
                 }
             }
         }
 
+
+        private static bool IsCharacterSeated(IMyCharacter ch)
+        {
+            // Когда персонаж сидит в блоке, ControllerInfo.Controller указывает
+            // на этот блок (кокпит / криокамера / кресло). Когда идёт пешком —
+            // либо null, либо сам персонаж. Дополнительно проверяем Parent:
+            // у сидячего персонажа это кубический блок.
+            var controller = ch.ControllerInfo?.Controller;
+            if (controller != null && controller != ch && !(controller is IMyCharacter))
+                return true;
+
+            if (ch.Parent is IMyCubeBlock)
+                return true;
+
+            return false;
+        }
 
         static string GetBasePlanetName(MyPlanet planet)
         {

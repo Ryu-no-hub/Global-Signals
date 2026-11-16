@@ -23,8 +23,8 @@ namespace TorchPlugin
                 return;
 
 
-            func.IsWorkingChanged -= Plugin.RadarWorkingChanged;
-            func.IsWorkingChanged += Plugin.RadarWorkingChanged;
+            func.IsWorkingChanged -= Plugin.OnRadarIsWorkingChanged;
+            func.IsWorkingChanged += Plugin.OnRadarIsWorkingChanged;
 
             func.OnClose -= Plugin.RadarBlockClosed;
             func.OnClose += Plugin.RadarBlockClosed;

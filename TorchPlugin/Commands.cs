@@ -4,6 +4,7 @@ using VRage.Game.ModAPI;
 using NLog;
 using System.Text;
 using Sandbox.Game;
+using System;
 
 namespace TorchPlugin
 {
@@ -31,8 +32,8 @@ namespace TorchPlugin
             Respond("  !gm scores update");
             Respond("    Updates factions scores");
 
-            Respond("  !gm scores show");
-            Respond("    Displays factions scores");
+            Respond("  !gm scores show [all]");
+            Respond("    Show factions scores (add 'all' to include inactive)");
 
             //Respond("  !gm scores enlistfactions");
             //Respond("    Update factions list");
@@ -71,22 +72,12 @@ namespace TorchPlugin
             sb.AppendLine($"Faction scoring enabled: {Format(config.FactionScore)}");
 
             Respond(sb.ToString());
+
             // TODO: Respond with your plugin settings
             // For example:
             //Respond($"custom_setting: {Format(config.CustomSetting)}");
         }
 
-        private void RespondWithFactionScores(string scores_result)
-        {
-            Respond($"{Plugin.PluginName}: \nScores: \n{scores_result}");
-        }
-
-        //private void RespondWithFactionsList(string factions_list)
-        //{
-        //    Respond($"{Plugin.PluginName}: Factions List: {factions_list}");
-        //}
-
-        // Custom formatters
 
         private static string Format(bool value) => value ? "Yes" : "No";
 
@@ -138,26 +129,45 @@ namespace TorchPlugin
         [Permission(MyPromoteLevel.Admin)]
         public void UpdScores()
         {
+            if (!Plugin.Config.FactionScore)
+            {
+                Respond("Faction scoring is disabled in config.");
+                return;
+            }
+
+            var previousScoreTime = Plugin._scores.LastScoreTimeUtc;
+            Plugin._scores.LastScoreTimeUtc = DateTime.UtcNow;
+
             resultSB.Clear();
             resultSB = Plugin.UpdateFactionsList(resultSB);
-            resultSB = Plugin.ScoreFactions(resultSB);
+            resultSB = Plugin.ScoreFactions(resultSB, previousScoreTime);
             MyVisualScriptLogicProvider.SendChatMessage(resultSB.ToString());
-            //RespondWithFactionScores(resultSB.ToString());
+
+            Plugin.SaveScores();
         }
 
-        [Command("gm scores show", "Displays factions scores")]
-        [Permission(MyPromoteLevel.Admin)]
-        public void ShowScores()
+        [Command("gm scores show", "Displays factions scores. Use 'all' to include inactive.")]
+        [Permission(MyPromoteLevel.None)]
+        public void ShowScores(string arg = null)
         {
-            resultSB.Clear();
-            resultSB = Plugin.ShowFactionScores(resultSB);
-            RespondWithFactionScores(resultSB.ToString());
+            bool showAll = false;
 
-            //var ply = Context?.Player;
-            //if (ply != null)
-            //    Plugin.ShowFactionScores(ply.IdentityId);
-            //else
-            //    Plugin.ShowFactionScores();
+            if (!string.IsNullOrEmpty(arg))
+            {
+                if (string.Equals(arg, "all", StringComparison.OrdinalIgnoreCase))
+                {
+                    showAll = true;
+                }
+                else
+                {
+                    Respond("Example: !gm scores show all");
+                    return;
+                }
+            }
+
+            resultSB.Clear();
+            resultSB = Plugin.ShowFactionScores(resultSB, showAll);
+            Respond(resultSB.ToString());
         }
 
         [Command("gm scores enlistfactions", "Update factions list")]
@@ -170,7 +180,7 @@ namespace TorchPlugin
         }
 
         [Command("gm scores drawpoints", "Draw covered planet points (Earthlike)")]
-        [Permission(MyPromoteLevel.Admin)]
+        [Permission(MyPromoteLevel.None)]
         public void DrawPoints()
         {
             var contextPlayer = Context?.Player;
@@ -182,7 +192,7 @@ namespace TorchPlugin
         }
 
         [Command("gm scores delpoints", "Remove covered planet points (Earthlike)")]
-        [Permission(MyPromoteLevel.Admin)]
+        [Permission(MyPromoteLevel.None)]
         public void RemovePoints()
         {
             var contextPlayer = Context?.Player;
