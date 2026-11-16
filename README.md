@@ -1,4 +1,4 @@
-# Global Signals (My first plugin)
+# Global Signals
 
 [Client only version of the template](https://github.com/sepluginloader/ClientPluginTemplate)
 
