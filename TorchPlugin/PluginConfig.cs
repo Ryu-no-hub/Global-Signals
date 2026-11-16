@@ -18,6 +18,7 @@ namespace TorchPlugin
         //       newly created Torch deployments.
         private string gpsDescriptionString = "Global Radar Signal";
         private bool useConnectedGrids = false;
+        private bool optimizeAdvancedDoors = false;
 
 
         //public bool UseConnectedGrids { get => _useConnectedGrids; set => SetValue(ref _useConnectedGrids, value); }
@@ -56,6 +57,13 @@ namespace TorchPlugin
         {
             get => gpsDescriptionString;
             set => SetValue(ref gpsDescriptionString, value);
+        }
+
+        [Display(Order = 6, GroupName = "General", Name = "Optimize advanced doors", Description = "Skip the per-frame UpdateDoorPosition work of idle advanced doors (e.g. hangar gates) that are fully at their limits on unchanged grids. Leave off until validated on your server.")]
+        public bool OptimizeAdvancedDoors
+        {
+            get => optimizeAdvancedDoors;
+            set => SetValue(ref optimizeAdvancedDoors, value);
         }
     }
 }

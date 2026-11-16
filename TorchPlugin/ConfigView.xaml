@@ -48,6 +48,11 @@
         <TextBlock Grid.Row="5" Grid.Column="0" Text="Detect code changes" VerticalAlignment="Center" Margin="5" />
         <CheckBox Grid.Row="5" Grid.Column="1" Name="DetectCodeChanges" IsChecked="{Binding DetectCodeChanges}" Margin="5" />
         <TextBlock Grid.Row="5" Grid.Column="2" Grid.ColumnSpan="2" Text="Enables checking for changes in patched game code (disable this on Proton/Linux)" VerticalAlignment="Center" Margin="5" />
+
+        <!-- OptimizeAdvancedDoors -->
+        <TextBlock Grid.Row="6" Grid.Column="0" Text="Optimize advanced doors" VerticalAlignment="Center" Margin="5" />
+        <CheckBox Grid.Row="6" Grid.Column="1" Name="OptimizeAdvancedDoors" IsChecked="{Binding OptimizeAdvancedDoors}" Margin="5" />
+        <TextBlock Grid.Row="6" Grid.Column="2" Grid.ColumnSpan="2" Text="Skips per-frame position/velocity updates of idle hangar doors that are fully at their limits on unchanged grids" VerticalAlignment="Center" Margin="5" />
         
         <!-- TODO: Add UI for your configuration properties, examples:
 

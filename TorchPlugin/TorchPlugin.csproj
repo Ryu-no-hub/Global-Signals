@@ -615,6 +615,7 @@
     <Reference Include="WindowsBase" />
   </ItemGroup>
   <ItemGroup>
+    <Compile Include="AdvancedDoorIdleOptimizationPatch.cs" />
     <Compile Include="CleanupCommands.cs" />
     <Compile Include="ConfigView.xaml.cs" />
     <Compile Include="ConnectorUndockDiagnostics.cs" />
