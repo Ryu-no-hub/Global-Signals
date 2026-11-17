@@ -37,7 +37,7 @@
 
         <!-- Signals -->
         <TextBlock Grid.Row="2" Grid.Column="0" Text="Global Signals" VerticalAlignment="Center" Margin="5" />
-        <CheckBox Grid.Row="2" Grid.Column="1" Grid.ColumnSpan="3" Name="Enabled" IsChecked="{Binding Enabled}" Margin="5" />
+        <CheckBox Grid.Row="2" Grid.Column="1" Grid.ColumnSpan="3" Name="Enabled" IsChecked="{Binding GlobalSignals}" Margin="5" />
 
         <TextBlock Grid.Row="3" Grid.Column="0" Text="Use connected grids" VerticalAlignment="Center" Margin="5" />
         <CheckBox Grid.Row="3" Grid.Column="1" Grid.ColumnSpan="3" Name="UseConnectedGrids" IsChecked="{Binding UseConnectedGrids}" Margin="5" />
